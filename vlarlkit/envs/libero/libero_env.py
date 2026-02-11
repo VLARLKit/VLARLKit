@@ -41,16 +41,12 @@ from vlarlkit.envs.utils import (
 
 
 class LiberoEnv(gym.Env):
-    def __init__(self, cfg, num_envs, seed_offset, total_num_processes, worker_info):
-        self.seed_offset = seed_offset
+    def __init__(self, cfg, num_envs):
         self.cfg = cfg
-        self.total_num_processes = total_num_processes
-        self.worker_info = worker_info
-        self.seed = self.cfg.seed + seed_offset
+        self.seed = self.cfg.seed
         self.num_envs = num_envs
         self.group_size = self.cfg.group_size
         self.num_group = self.num_envs // self.group_size
-        self.use_fixed_reset_state_ids = cfg.use_fixed_reset_state_ids
         self.specific_reset_id = cfg.get("specific_reset_id", None)
 
         self.ignore_terminations = cfg.ignore_terminations
@@ -157,12 +153,7 @@ class LiberoEnv(gym.Env):
 
     def get_reset_state_ids_all(self):
         reset_state_ids = np.arange(self.total_num_group_envs)
-        valid_size = len(reset_state_ids) - (
-            len(reset_state_ids) % self.total_num_processes
-        )
         self._generator_ordered.shuffle(reset_state_ids)
-        reset_state_ids = reset_state_ids[:valid_size]
-        reset_state_ids = reset_state_ids.reshape(self.total_num_processes, -1)
         return reset_state_ids
 
     def _get_ordered_reset_state_ids(self, num_reset_states):
@@ -171,10 +162,10 @@ class LiberoEnv(gym.Env):
                 (self.num_group,), dtype=int
             )
         else:
-            if self.start_idx + num_reset_states > len(self.reset_state_ids_all[0]):
+            if self.start_idx + num_reset_states > len(self.reset_state_ids_all):
                 self.reset_state_ids_all = self.get_reset_state_ids_all()
                 self.start_idx = 0
-            reset_state_ids = self.reset_state_ids_all[self.seed_offset][
+            reset_state_ids = self.reset_state_ids_all[
                 self.start_idx : self.start_idx + num_reset_states
             ]
             self.start_idx = self.start_idx + num_reset_states
@@ -433,8 +424,6 @@ class LiberoEnv(gym.Env):
         obs, infos = self.reset(
             env_idx=env_idx,
             reset_state_ids=self.reset_state_ids[env_idx]
-            if self.use_fixed_reset_state_ids
-            else None,
         )
         # gymnasium calls it final observation but it really is just o_{t+1} or the true next observation
         infos["final_observation"] = final_obs

@@ -1,0 +1,12 @@
+**/__pycache__
+.idea/
+**/.DS_STORE
+**/log
+**/build
+**/dist
+**/*.egg-info
+**/*.txt
+**/.vscode
+**/outputs
+**/wandb
+**/tests

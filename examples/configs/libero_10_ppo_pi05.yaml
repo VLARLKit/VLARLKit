@@ -1,0 +1,61 @@
+defaults:
+  - envs/libero_10@env.train
+
+
+algorithm:
+  normalize_advantages: True
+  kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
+  group_size: 1
+  reward_coef: 1.0
+  rollout_epochs: 8
+  eval_rollout_epochs: 1 # set eval_rollout_epoch > 0 when enable runner.only_eval or runner.val_check_interval > 0
+
+  update_epochs: 4
+  adv_type: gae
+  loss_type: actor_critic
+  kl_beta: 0.0
+  entropy_bonus: 0
+  clip_ratio_high: 0.2
+  clip_ratio_low: 0.2
+  clip_ratio_c: 3.0
+  value_clip: 0.2
+  huber_delta: 10.0
+
+  gamma: 0.99
+  gae_lambda: 0.95
+
+  # params for generation
+  sampling_params:
+    do_sample: True
+    temperature_train: 1.0
+    temperature_eval: 0.6
+    top_k: 50
+    top_p: 1.0
+    repetition_penalty: 1.0
+    add_BOS: False
+
+  # length argument for autoregressive sampling
+  # max length means max amount of tokens to generate
+  length_params:
+    max_new_token: null
+    max_length: 1024
+    min_length: 1
+
+env:
+  train:
+    total_num_envs: 64
+    max_episode_steps: 480 # max episode steps for truncation
+    max_steps_per_rollout: 480
+    reward_coef: ${algorithm.reward_coef}
+  eval:
+    total_num_envs: 500
+    auto_reset: True
+    ignore_terminations: True
+    max_episode_steps: 480
+    max_steps_per_rollout: 480
+    group_size: 1
+    is_eval: True
+
+
+policy:
+  num_action_chunks: 10
