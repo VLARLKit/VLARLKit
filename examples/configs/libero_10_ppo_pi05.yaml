@@ -1,5 +1,6 @@
 defaults:
   - envs/libero_10@env.train
+  - models/pi05@model
 
 
 algorithm:
@@ -57,5 +58,46 @@ env:
     is_eval: True
 
 
-policy:
+model:
+  model_path: "path/to/model/openpi"
   num_action_chunks: 10
+  action_dim: 7
+  use_proprio: True
+  num_steps: 5
+  add_value_head: True
+
+  openpi:
+    config_name: "pi05_libero"
+    num_images_in_input: 2
+    value_after_vlm: True
+
+  data:
+    name: "libero"
+    repo_id: "physical-intelligence/libero"
+    prompt_from_task: True
+    asset_dir: "checkpoints/torch/pi0_libero/assets"
+    extra_delta_transform: False
+
+
+training:
+  optim:
+    lr: 5.0e-6
+    value_lr: 1.0e-4
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    adam_eps: 1.0e-08
+    weight_decay: 0.01
+    clip_grad: 1.0
+    critic_warmup_steps: 0
+    total_training_steps: 1000
+    min_lr_rate: 0.1
+    lr_scheduler: "cosine" # Learning rate scheduler type. Choices: ["constant", "cosine"]. Default: "constant".
+  
+  fsdp_config:
+    strategy: "fsdp"
+    sharding_strategy: "no_shard"
+    gradient_checkpointing: False # for openpi, gradient checkpointing is not supported, please do not change this value
+    mixed_precision:
+      param_dtype: ${model.precision}
+      reduce_dtype: ${model.precision}
+      buffer_dtype: ${model.precision}
