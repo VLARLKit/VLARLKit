@@ -19,7 +19,7 @@ class Rollout:
     def rollout_one_epoch(self):
         num_chunk_steps = (
             self.cfg.env[self.mode].max_steps_per_rollout
-            // self.cfg.policy.num_action_chunks
+            // self.cfg.model.num_action_chunks
         )
         
         # If auto_reset is False, it will reset the environment at the beginning of each epoch
@@ -31,10 +31,10 @@ class Rollout:
 
         for _ in range(num_chunk_steps):
             # actions, policy_info = self.policy.predict(obs)
-            actions = np.random.randn(self.env.num_envs, self.cfg.policy.num_action_chunks, 7)
+            actions = np.random.randn(self.env.num_envs, self.cfg.model.num_action_chunks, 7)
             policy_info = {
-                "logprobs": np.zeros(shape=(self.env.num_envs, self.cfg.policy.num_action_chunks)),
-                "values": np.zeros(shape=(self.env.num_envs, self.cfg.policy.num_action_chunks)),
+                "logprobs": np.zeros(shape=(self.env.num_envs, self.cfg.model.num_action_chunks)),
+                "values": np.zeros(shape=(self.env.num_envs, self.cfg.model.num_action_chunks)),
             }
             next_obs, rewards, terminations, truncations, env_info = self.env.chunk_step(actions)
             rewards = rewards.sum(-1) # [num_envs, chunk_steps] -> [num_envs,]

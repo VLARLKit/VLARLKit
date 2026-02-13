@@ -1,0 +1,19 @@
+[project]
+name = "vlarlkit"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.11.*"
+dependencies = [
+    "libero",
+    "openpi",
+    "tensorflow>=2.15.0",
+    "chex>=0.1.90",
+]
+
+[tool.uv.sources]
+libero = { workspace = true }
+openpi = { workspace = true }
+
+[tool.uv.workspace]
+members = ["external/*", "external/openpi/packages/*"]

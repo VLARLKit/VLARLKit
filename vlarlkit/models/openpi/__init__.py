@@ -30,6 +30,7 @@ def get_model(cfg: DictConfig):
     import openpi.transforms as transforms
     import safetensors
     from openpi.training import checkpoints
+    from openpi.training.config import AssetsConfig, DataConfig
 
     from vlarlkit.models.openpi.dataconfigs import get_data_config
     from vlarlkit.models.openpi.openpi_model import (
@@ -39,7 +40,7 @@ def get_model(cfg: DictConfig):
 
     # config
     model_config = OpenPi0Config()
-    for key, val in cfg.pi0_config.items():
+    for key, val in cfg.openpi.items():
         model_config.__dict__[key] = val
 
     # load model
@@ -60,17 +61,20 @@ def get_model(cfg: DictConfig):
     # model.paligemma_with_expert.replace_gemma_decoder_layers()
 
     # load data stats
-    data_config_cls = get_data_config(cfg.data_config.name)
-    data_config = data_config_cls.create(
-        cfg.data_config.assets_dirs, model_config
+    data_config_cls = get_data_config(cfg.data.name)(
+        repo_id=cfg.data.repo_id,
+        base_config=DataConfig(prompt_from_task=cfg.data.prompt_from_task),
+        assets=AssetsConfig(assets_dir=cfg.data.assets_dir),
+        extra_delta_transform=cfg.data.extra_delta_transform,
     )
-    norm_stats = None
-    if norm_stats is None:
-        # We are loading the norm stats from the checkpoint instead of the config assets dir to make sure
-        # that the policy is using the same normalization stats as the original training process.
-        if data_config.asset_id is None:
-            raise ValueError("Asset id is required to load norm stats.")
-        norm_stats = checkpoints.load_norm_stats(checkpoint_dir, data_config.asset_id)
+    data_config = data_config_cls.create(
+        cfg.data.assets_dir, model_config
+    )
+    # We are loading the norm stats from the checkpoint instead of the config assets dir to make sure
+    # that the policy is using the same normalization stats as the original training process.
+    if data_config.asset_id is None:
+        raise ValueError("Asset id is required to load norm stats.")
+    norm_stats = checkpoints.load_norm_stats(checkpoint_dir, data_config.asset_id)
 
     # wrappers
     repack_transforms = transforms.Group()

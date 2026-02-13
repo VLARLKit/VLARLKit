@@ -75,7 +75,7 @@ model:
     name: "libero"
     repo_id: "physical-intelligence/libero"
     prompt_from_task: True
-    asset_dir: "checkpoints/torch/pi0_libero/assets"
+    assets_dir: "checkpoints/torch/pi0_libero/assets"
     extra_delta_transform: False
 
 
