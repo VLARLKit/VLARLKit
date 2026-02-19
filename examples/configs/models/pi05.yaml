@@ -16,6 +16,7 @@ add_value_head: True
 
 # openpi specific parameters
 openpi:
+  pi05: True
   config_name: "pi05_libero"
   num_images_in_input: 2
   noise_level: 0.5
@@ -28,3 +29,11 @@ openpi:
   value_after_vlm: True
   value_vlm_mode: "mean_token"
   detach_critic_input: null
+  discrete_state_input: False
+
+data:
+  name: "libero"
+  repo_id: "physical-intelligence/libero"
+  prompt_from_task: True
+  assets_dir: "checkpoints/torch/pi0_libero/assets"
+  extra_delta_transform: False

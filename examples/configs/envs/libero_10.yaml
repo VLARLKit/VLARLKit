@@ -20,7 +20,7 @@ seed: 0
 group_size: 1
 
 video_cfg:
-  save_video: True
+  save_video: False
   info_on_video: True
   video_base_dir: null
 

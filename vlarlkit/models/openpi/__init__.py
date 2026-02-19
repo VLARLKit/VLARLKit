@@ -39,9 +39,7 @@ def get_model(cfg: DictConfig):
     )
 
     # config
-    model_config = OpenPi0Config()
-    for key, val in cfg.openpi.items():
-        model_config.__dict__[key] = val
+    model_config = OpenPi0Config(**dict(cfg.openpi))
 
     # load model
     checkpoint_dir = download.maybe_download(str(cfg.model_path))

@@ -1,3 +1,5 @@
+from typing import Any
+
 from vlarlkit.data.io_struct import RolloutResult
 
 import torch
@@ -5,16 +7,40 @@ import numpy as np
 
 
 class Rollout:
-    def __init__(self, cfg, env, policy, rollout_result: RolloutResult, mode="train"):
+    def __init__(self, cfg, env, actor_model, rollout_result: RolloutResult, mode="train"):
         self.cfg = cfg
         self.env = env
-        self.policy = policy
+        self.actor_model = actor_model
         self.rollout_result = rollout_result
         self.mode = mode
         self.auto_reset = self.cfg.env[self.mode].auto_reset
 
-        if self.auto_reset:
-            self.last_obs = self.env.reset()
+        self.init_rollout()
+
+    def init_rollout(self) -> None:
+        if not self.auto_reset:
+            obs, _ = self.env.reset()
+            self.last_obs = self.prepare_observations(obs)
+        self.rollout_result.clear()
+
+    def prepare_observations(self, obs: dict[str, Any]) -> dict[str, Any]:
+        image_tensor = obs["main_images"] if "main_images" in obs else None
+        wrist_image_tensor = obs["wrist_images"] if "wrist_images" in obs else None
+        extra_view_image_tensor = (
+            obs["extra_view_images"] if "extra_view_images" in obs else None
+        )
+        states = obs["states"] if "states" in obs else None
+        task_descriptions = (
+            list(obs["task_descriptions"]) if "task_descriptions" in obs else None
+        )
+
+        return {
+            "main_images": image_tensor,  # [N_ENV, H, W, C]
+            "wrist_images": wrist_image_tensor,  # [N_ENV, H, W, C] or [N_ENV, N_IMG, H, W, C]
+            "extra_view_images": extra_view_image_tensor,  # [N_ENV, N_IMG, H, W, C]
+            "states": states,
+            "task_descriptions": task_descriptions,
+        }
 
     def rollout_one_epoch(self):
         num_chunk_steps = (
@@ -25,35 +51,29 @@ class Rollout:
         # If auto_reset is False, it will reset the environment at the beginning of each epoch
         # If auto_reset is True, it will consume from last_obs in last epoch
         if not self.auto_reset:
-            obs = self.env.reset()
+            obs, _ = self.env.reset()
+            obs = self.prepare_observations(obs)
         else:
             obs = self.last_obs
 
         for _ in range(num_chunk_steps):
-            # actions, policy_info = self.policy.predict(obs)
-            actions = np.random.randn(self.env.num_envs, self.cfg.model.num_action_chunks, 7)
-            policy_info = {
-                "logprobs": np.zeros(shape=(self.env.num_envs, self.cfg.model.num_action_chunks)),
-                "values": np.zeros(shape=(self.env.num_envs, self.cfg.model.num_action_chunks)),
-            }
+            with torch.no_grad():
+                actions, info = self.actor_model.predict_action_batch(obs, mode=self.mode)
             next_obs, rewards, terminations, truncations, env_info = self.env.chunk_step(actions)
+            next_obs = self.prepare_observations(next_obs)
             rewards = rewards.sum(-1) # [num_envs, chunk_steps] -> [num_envs,]
             terminations = terminations.any(-1) # [num_envs, chunk_steps] -> [num_envs,]
             truncations = truncations.any(-1) # [num_envs, chunk_steps] -> [num_envs,]
 
-            print(rewards.shape)
-            print(terminations.shape)
-            print(truncations.shape)
-
             # bootstrap value for truncated rollouts
             if truncations.any() and self.auto_reset:
-                final_obs = env_info["final_obs"]
-                # with torch.no_grad:
-                #     _, _policy_info = self.policy.predict(final_obs)
-                #     _final_values = _policy_info["prev_values"]
-                # final_values = torch.zeros_like(_final_values)
-                # final_values[truncations] = _final_values
-                rewards += self.cfg.algorithm.gamma * 0
+                final_obs = self.prepare_observations(env_info["final_observation"])
+                with torch.no_grad():
+                    _, _info = self.actor_model.predict_action_batch(final_obs, mode=self.mode)
+                    _final_values = _info["prev_values"].detach().cpu().numpy().reshape(-1)
+                final_values = np.zeros_like(_final_values)
+                final_values[truncations] = _final_values[truncations]
+                rewards += self.cfg.algorithm.gamma * final_values
 
             self.rollout_result.append_step(
                 obs=obs,
@@ -62,8 +82,9 @@ class Rollout:
                 rewards=rewards,
                 terminations=terminations,
                 truncations=truncations,
-                prev_logprobs=policy_info["logprobs"],
-                prev_values=policy_info["values"],
+                prev_logprobs=info["prev_logprobs"],
+                prev_values=info["prev_values"],
+                forward_inputs=info["forward_inputs"],
             )
             obs = next_obs.copy()
 
@@ -74,7 +95,9 @@ class Rollout:
         if self.auto_reset:
             self.last_obs = obs
 
+        if self.mode == "eval":
+            return env_info["final_info"]["episode"]
+
     def rollout(self):
         for epoch in range(self.cfg.algorithm.rollout_epochs):
-            print(f"Rollout epoch {epoch}")
             self.rollout_one_epoch()

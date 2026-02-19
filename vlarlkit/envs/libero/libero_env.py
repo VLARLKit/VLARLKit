@@ -41,7 +41,6 @@ from vlarlkit.envs.utils import (
     put_info_on_image,
     save_rollout_video,
     tile_images,
-    to_tensor,
 )
 
 
@@ -239,7 +238,7 @@ class LiberoEnv(gym.Env):
         episode_info["return"] = self.returns.copy()
         episode_info["episode_len"] = self.elapsed_steps.copy()
         episode_info["reward"] = episode_info["return"] / episode_info["episode_len"]
-        infos["episode"] = to_tensor(episode_info)
+        infos["episode"] = episode_info
         return infos
 
     def _extract_image_and_state(self, obs):
@@ -261,23 +260,12 @@ class LiberoEnv(gym.Env):
             images_and_states = self._extract_image_and_state(obs)
             images_and_states_list.append(images_and_states)
 
-        images_and_states = to_tensor(
-            list_of_dict_to_dict_of_list(images_and_states_list)
-        )
-
-        full_image_tensor = torch.stack(
-            [value.clone() for value in images_and_states["full_image"]]
-        )
-        wrist_image_tensor = torch.stack(
-            [value.clone() for value in images_and_states["wrist_image"]]
-        )
-
-        states = images_and_states["state"]
+        merged = list_of_dict_to_dict_of_list(images_and_states_list)
 
         obs = {
-            "main_images": full_image_tensor,
-            "wrist_images": wrist_image_tensor,
-            "states": states,
+            "main_images": np.stack(merged["full_image"]),
+            "wrist_images": np.stack(merged["wrist_image"]),
+            "states": np.stack(merged["state"]),
             "task_descriptions": self.task_descriptions,
         }
         return obs
@@ -353,7 +341,7 @@ class LiberoEnv(gym.Env):
 
         infos = self._record_metrics(step_reward, terminations, infos)
         if self.ignore_terminations:
-            infos["episode"]["success_at_end"] = to_tensor(terminations)
+            infos["episode"]["success_at_end"] = terminations.copy()
             terminations[:] = False
 
         dones = terminations | truncations
@@ -362,18 +350,19 @@ class LiberoEnv(gym.Env):
             obs, infos = self._handle_auto_reset(dones, obs, infos)
         return (
             obs,
-            to_tensor(step_reward),
-            to_tensor(terminations),
-            to_tensor(truncations),
+            step_reward.astype(np.float32),
+            terminations,
+            truncations,
             infos,
         )
 
     def chunk_step(self, chunk_actions):
         # chunk_actions: [num_envs, chunk_step, action_dim]
+        if isinstance(chunk_actions, torch.Tensor):
+            chunk_actions = chunk_actions.detach().cpu().numpy()
         chunk_size = chunk_actions.shape[1]
 
         chunk_rewards = []
-
         raw_chunk_terminations = []
         raw_chunk_truncations = []
         for i in range(chunk_size):
@@ -386,32 +375,28 @@ class LiberoEnv(gym.Env):
             raw_chunk_terminations.append(terminations)
             raw_chunk_truncations.append(truncations)
 
-        chunk_rewards = torch.stack(chunk_rewards, dim=1)  # [num_envs, chunk_steps]
-        raw_chunk_terminations = torch.stack(
-            raw_chunk_terminations, dim=1
-        )  # [num_envs, chunk_steps]
-        raw_chunk_truncations = torch.stack(
-            raw_chunk_truncations, dim=1
-        )  # [num_envs, chunk_steps]
+        chunk_rewards = np.stack(chunk_rewards, axis=1)              # [num_envs, chunk_steps]
+        raw_chunk_terminations = np.stack(raw_chunk_terminations, axis=1)  # [num_envs, chunk_steps]
+        raw_chunk_truncations = np.stack(raw_chunk_truncations, axis=1)    # [num_envs, chunk_steps]
 
-        past_terminations = raw_chunk_terminations.any(dim=1)
-        past_truncations = raw_chunk_truncations.any(dim=1)
-        past_dones = torch.logical_or(past_terminations, past_truncations)
+        past_terminations = raw_chunk_terminations.any(axis=1)
+        past_truncations = raw_chunk_truncations.any(axis=1)
+        past_dones = np.logical_or(past_terminations, past_truncations)
 
         if past_dones.any() and self.auto_reset:
             extracted_obs, infos = self._handle_auto_reset(
-                past_dones.cpu().numpy(), extracted_obs, infos
+                past_dones, extracted_obs, infos
             )
 
         if self.auto_reset or self.ignore_terminations:
-            chunk_terminations = torch.zeros_like(raw_chunk_terminations)
+            chunk_terminations = np.zeros_like(raw_chunk_terminations)
             chunk_terminations[:, -1] = past_terminations
 
-            chunk_truncations = torch.zeros_like(raw_chunk_truncations)
+            chunk_truncations = np.zeros_like(raw_chunk_truncations)
             chunk_truncations[:, -1] = past_truncations
         else:
-            chunk_terminations = raw_chunk_terminations.clone()
-            chunk_truncations = raw_chunk_truncations.clone()
+            chunk_terminations = raw_chunk_terminations.copy()
+            chunk_truncations = raw_chunk_truncations.copy()
         return (
             extracted_obs,
             chunk_rewards,

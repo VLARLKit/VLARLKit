@@ -1,6 +1,19 @@
 from dataclasses import dataclass, field
+from typing import Any, Optional
 
+import numpy as np
 import torch
+
+
+def _to_numpy(x: Any) -> Any:
+    """Convert a torch.Tensor or numpy array to numpy, no-op for other types."""
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().numpy()
+    if isinstance(x, np.ndarray):
+        return x
+    if isinstance(x, dict):
+        return {k: _to_numpy(v) for k, v in x.items()}
+    return x
 
 
 @dataclass(kw_only=True)
@@ -9,28 +22,44 @@ class RolloutResult:
     Results of one-epoch rollouts.
     """
 
-    obs: list[torch.Tensor] = field(default_factory=list) # each element is (n_envs, *obs_shape), length is num_chunk_steps
-    next_obs: list[torch.Tensor] = field(default_factory=list)
-    actions: list[torch.Tensor] = field(default_factory=list)
-    rewards: list[torch.Tensor] = field(default_factory=list)
-    terminations: list[torch.Tensor] = field(default_factory=list)
-    truncations: list[torch.Tensor] = field(default_factory=list)
-    prev_logprobs: list[torch.Tensor] = field(default_factory=list)
-    prev_values: list[torch.Tensor] = field(default_factory=list)
+    obs: list[dict[str, Any]] = field(default_factory=list)
+    next_obs: list[dict[str, Any]] = field(default_factory=list)
+    actions: list[np.ndarray] = field(default_factory=list)
+    rewards: list[np.ndarray] = field(default_factory=list)
+    terminations: list[np.ndarray] = field(default_factory=list)
+    truncations: list[np.ndarray] = field(default_factory=list)
+    prev_logprobs: list[np.ndarray] = field(default_factory=list)
+    prev_values: list[np.ndarray] = field(default_factory=list)
+    forward_inputs: list[dict[str, Any]] = field(default_factory=list)
 
-    returns: torch.Tensor | None = field(default=None, repr=False)
-    advantages: torch.Tensor | None = field(default=None, repr=False)
+    returns: np.ndarray | None = field(default=None, repr=False)
+    advantages: np.ndarray | None = field(default=None, repr=False)
+
+    def clear(self) -> None:
+        """Clear all list fields and reset returns/advantages for a new rollout."""
+        self.obs.clear()
+        self.next_obs.clear()
+        self.actions.clear()
+        self.rewards.clear()
+        self.terminations.clear()
+        self.truncations.clear()
+        self.prev_logprobs.clear()
+        self.prev_values.clear()
+        self.forward_inputs.clear()
+        self.returns = None
+        self.advantages = None
 
     def append_step(
         self,
-        obs: torch.Tensor,
-        next_obs: torch.Tensor,
-        actions: torch.Tensor,
-        rewards: torch.Tensor,
-        terminations: torch.Tensor,
-        truncations: torch.Tensor,
-        prev_logprobs: torch.Tensor=None,
-        prev_values: torch.Tensor=None,
+        obs: Any,
+        next_obs: Any,
+        actions: Any,
+        rewards: Any,
+        terminations: Any,
+        truncations: Any,
+        prev_logprobs: Optional[Any] = None,
+        prev_values: Optional[Any] = None,
+        forward_inputs: Optional[dict[str, Any]] = None,
     ) -> None:
         self.obs.append(obs)
         self.next_obs.append(next_obs)
@@ -39,11 +68,18 @@ class RolloutResult:
         self.terminations.append(terminations)
         self.truncations.append(truncations)
         if prev_logprobs is not None:
-            self.prev_logprobs.append(prev_logprobs)
+            self.prev_logprobs.append(_to_numpy(prev_logprobs))
         if prev_values is not None:
-            self.prev_values.append(prev_values)
+            self.prev_values.append(_to_numpy(prev_values))
+        if forward_inputs is not None:
+            self.forward_inputs.append(_to_numpy(forward_inputs))
 
-    def compute_returns_and_advantages(self, gamma: float, gae_lambda: float, last_values: torch.Tensor | None = None):
+    def compute_returns_and_advantages(
+        self,
+        gamma: float,
+        gae_lambda: float,
+        last_values: np.ndarray | None = None,
+    ):
         """
         Compute returns and advantages using GAE (Generalized Advantage Estimation).
 
@@ -54,22 +90,25 @@ class RolloutResult:
                          Defaults to zeros (no bootstrapping) if None.
         """
         num_steps = len(self.rewards)
-        rewards = torch.stack(self.rewards)            # (T, n_envs)
-        values = torch.stack(self.prev_values)          # (T, n_envs)
-        terminations = torch.stack(self.terminations)   # (T, n_envs)
-        truncations = torch.stack(self.truncations)     # (T, n_envs)
+        rewards = np.stack(self.rewards).astype(np.float32)         # (T, n_envs)
+        values = np.stack(self.prev_values).astype(np.float32)      # (T, n_envs, 1)
+        values = values.squeeze(-1)                                 # (T, n_envs)
+        terminations = np.stack(self.terminations)                  # (T, n_envs)
+        truncations = np.stack(self.truncations)                    # (T, n_envs)
 
-        dones = torch.logical_or(terminations, truncations) # (T, n_envs)
+        dones = np.logical_or(terminations, truncations)
 
         if last_values is None:
-            last_values = torch.zeros_like(values[0])
+            last_values = np.zeros_like(values[0])
+        else:
+            last_values = np.asarray(last_values, dtype=np.float32)
 
-        advantages = torch.zeros_like(rewards)
-        last_gae_lam = torch.zeros_like(rewards[0])
+        advantages = np.zeros_like(rewards)
+        last_gae_lam = np.zeros_like(rewards[0])
 
         for t in reversed(range(num_steps)):
             next_values = last_values if t == num_steps - 1 else values[t + 1]
-            not_done = 1.0 - dones[t]
+            not_done = (~dones[t]).astype(np.float32)
 
             delta = rewards[t] + gamma * next_values * not_done - values[t]
             last_gae_lam = delta + gamma * gae_lambda * not_done * last_gae_lam
@@ -78,34 +117,58 @@ class RolloutResult:
         self.returns = advantages + values
         self.advantages = advantages
 
-    def get_batch(self) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
+    def get_batch(
+        self,
+        world_size: int = 1,
+        normalize_advantages: bool = True,
+    ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
         """
-        Stack all rollout data into a single batch dict.
+        Stack all rollout data into a single batch dict of torch tensors.
 
         obs and next_obs are dicts of arrays, so they are stacked per key.
         returns and advantages are included only if they have been computed.
+        If normalize_advantages is True, advantages are normalized over the full batch (N_used).
 
         Returns:
-            A dict with stacked arrays, each of shape (T, n_envs, ...).
+            A dict with stacked torch tensors, each of shape (T, n_envs, ...).
         """
-        batch = {}
+        batch: dict[str, Any] = {}
 
-        # obs and next_obs: list[dict[str, torch.Tensor]] -> dict[str, torch.Tensor]
         for name in ("obs", "next_obs"):
             data_list = getattr(self, name)
-            keys = data_list[0].keys()
-            batch[name] = {k: torch.stack([d[k] for d in data_list]) for k in keys}
+            stacked = {}
+            for k in data_list[0].keys():
+                vals = [d[k] for d in data_list]
+                if not isinstance(vals[0], np.ndarray): # task descriptions are not numpy arrays
+                    continue
+                stacked[k] = torch.from_numpy(np.stack(vals))
+            batch[name] = stacked
 
-        # Other list fields: list[torch.Tensor] -> torch.Tensor
         for name in ("actions", "rewards", "terminations", "truncations", "prev_logprobs", "prev_values"):
             data_list = getattr(self, name)
             if len(data_list) > 0:
-                batch[name] = torch.stack(data_list)
+                batch[name] = torch.from_numpy(np.stack(data_list))
 
-        # Computed fields (already stacked)
+        if self.forward_inputs:
+            data_list = self.forward_inputs
+            keys = data_list[0].keys()
+            batch["forward_inputs"] = {
+                k: torch.from_numpy(np.stack([d[k] for d in data_list]))
+                for k in keys
+            }
+
         if self.returns is not None:
-            batch["returns"] = self.returns
+            batch["returns"] = torch.from_numpy(self.returns)
         if self.advantages is not None:
-            batch["advantages"] = self.advantages
+            batch["advantages"] = torch.from_numpy(self.advantages)
+
+        if normalize_advantages and "advantages" in batch:
+            adv = batch["advantages"]
+            N_total = adv.shape[0] * adv.shape[1]
+            N_used = (N_total // world_size) * world_size
+            adv_flat = adv.reshape(-1)[:N_used]
+            mean = adv_flat.mean().item()
+            std = (adv_flat.std() + 1e-8).item()
+            batch["advantages"] = (adv - mean) / std
 
         return batch

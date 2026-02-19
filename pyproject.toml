@@ -8,12 +8,11 @@ dependencies = [
     "libero",
     "openpi",
     "tensorflow>=2.15.0",
-    "chex>=0.1.90",
 ]
 
 [tool.uv.sources]
 libero = { workspace = true }
-openpi = { workspace = true }
+openpi = { git = "https://github.com/RLinf/openpi", branch = "main" }
 
 [tool.uv.workspace]
-members = ["external/*", "external/openpi/packages/*"]
+members = ["external/*"]
