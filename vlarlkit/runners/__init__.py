@@ -1,3 +1,3 @@
-from vlarlkit.runners.runner import Runner
+from vlarlkit.runners.onpolicy_runner import OnPolicyRunner
 
-__all__ = ["Runner"]
+__all__ = ["OnPolicyRunner"]

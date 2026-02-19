@@ -119,7 +119,7 @@ class PPOPolicy:
                 out[k] = v
         return out
 
-    def learn(self, batch: dict[str, Any]) -> dict[str, float]:
+    def run_update(self, batch: dict[str, Any]) -> dict[str, float]:
         self.model.train()
 
         update_epochs = int(self.algo_cfg.get("update_epochs"))
@@ -132,35 +132,18 @@ class PPOPolicy:
         huber_delta = float(self.algo_cfg.get("huber_delta", 10.0))
         entropy_bonus = float(self.algo_cfg.get("entropy_bonus", 0.0))
 
-        advantages = batch["advantages"]
-        prev_logprobs = batch["prev_logprobs"]
-        prev_values = batch["prev_values"]
-        returns = batch["returns"]
-        forward_inputs = batch["forward_inputs"]
+        advantages_flat = batch["advantages"]
+        prev_logprobs_flat = batch["prev_logprobs"]
+        prev_values_flat = batch["prev_values"]
+        returns_flat = batch["returns"]
+        forward_inputs_flat = batch["forward_inputs"]
 
-        T, n_envs = advantages.shape[0], advantages.shape[1]
-        N = T * n_envs
-        advantages_flat = advantages.reshape(N)
-        if prev_logprobs.dim() > 2:
-            prev_logprobs_flat = prev_logprobs.reshape(N, -1).sum(-1)
-        else:
-            prev_logprobs_flat = prev_logprobs.reshape(N)
-        prev_values_flat = prev_values.reshape(N)
-        returns_flat = returns.reshape(N)
+        if prev_logprobs_flat.dim() > 1:
+            prev_logprobs_flat = prev_logprobs_flat.sum(
+                dim=tuple(range(1, prev_logprobs_flat.dim()))
+            )
 
-        def flatten_forward_inputs(fwd: dict) -> dict:
-            out_fwd = {}
-            for k, v in fwd.items():
-                if torch.is_tensor(v):
-                    if v.dim() >= 3:
-                        out_fwd[k] = v.reshape(N, *v.shape[2:])
-                    else:
-                        out_fwd[k] = v.reshape(N, *v.shape[1:])
-                else:
-                    out_fwd[k] = v
-            return out_fwd
-
-        forward_inputs_flat = flatten_forward_inputs(forward_inputs)
+        N = advantages_flat.shape[0]
 
         total_policy_loss = 0.0
         total_value_loss = 0.0

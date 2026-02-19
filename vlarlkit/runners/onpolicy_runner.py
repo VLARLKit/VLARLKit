@@ -9,7 +9,7 @@ from vlarlkit.rollouts.rollout import Rollout
 from vlarlkit.utils.data_sharding import shard_batch
 
 
-class Runner:
+class OnPolicyRunner:
     """
     RL runner: holds cfg, policy, train_rollout_worker and eval_rollout_worker (on rank 0).
     Core loop: train_rollout_worker.rollout() -> broadcast batch -> policy.learn -> sync to workers' actor_model.
@@ -92,18 +92,17 @@ class Runner:
             )
 
             learn_start_time = time.time()
-            metrics = self.policy.learn(batch)
+            metrics = self.policy.run_update(batch)
             learn_end_time = time.time()
-            self.logger.info(f"Learned in {learn_end_time - learn_start_time:.2f}s")
             if world_size > 1:
                 metrics_tensor = torch.tensor(
                     [metrics.get(k, 0.0) for k in sorted(metrics.keys())],
-                    dtype=torch.float64,
                     device=self.device,
                 )
                 dist.all_reduce(metrics_tensor, op=dist.ReduceOp.AVG)
                 metrics = dict(zip(sorted(metrics.keys()), metrics_tensor.tolist()))
             if self.rank == 0 and self.logger:
+                self.logger.info(f"Updated policy in {learn_end_time - learn_start_time:.2f}s")
                 train_metrics_str = ", ".join(
                     [f"{k}={v:.4f}" for k, v in metrics.items()]
                 )

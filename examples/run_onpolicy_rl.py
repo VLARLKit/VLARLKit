@@ -3,6 +3,7 @@ Usage (multi-GPU with torchrun):
     torchrun --nproc_per_node=2 examples/run.py
 """
 import logging
+import torch
 import torch.distributed as dist
 
 import hydra
@@ -13,7 +14,7 @@ from vlarlkit.envs.libero.libero_env import LiberoEnv
 from vlarlkit.models.openpi import get_model
 from vlarlkit.policies import PPOPolicy
 from vlarlkit.rollouts import Rollout
-from vlarlkit.runners import Runner
+from vlarlkit.runners import OnPolicyRunner
 
 
 def get_env(cfg: DictConfig, mode: str = "train"):
@@ -33,10 +34,16 @@ def main(cfg: DictConfig) -> None:
         dist.init_process_group(backend="nccl")
     rank = dist.get_rank()
 
-    # Hydra already configures logging; just grab the logger on rank 0
+    # initialize logger
     logger = logging.getLogger("vlarlkit.runner") if rank == 0 else None
 
-    # All ranks: model + policy. Rank 0 only: train/eval envs + rollout model + train/eval rollout workers
+    # Must be called before any model creation: sets the default CUDA device
+    # for this process so that implicit CUDA ops (e.g. inside torch.compile,
+    # transformers init) land on the correct GPU.
+    torch.cuda.set_device(rank)
+
+    # All ranks: policy.
+    # Rank 0 only: envs + rollout workers.
     model = get_model(cfg.model)
     policy = PPOPolicy(cfg, model, rank)
 
@@ -47,12 +54,12 @@ def main(cfg: DictConfig) -> None:
         eval_env = get_env(cfg, "eval")
         actor_model = get_model(cfg.model)
         actor_model.to(f"cuda:{rank}")
-        train_rollout_result = RolloutResult()
+        train_rollout_result = RolloutResult() # store rollout data
         eval_rollout_result = RolloutResult()
         train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train")
         eval_rollout_worker = Rollout(cfg, eval_env, actor_model, eval_rollout_result, mode="eval")
 
-    runner = Runner(
+    runner = OnPolicyRunner(
         cfg=cfg,
         policy=policy,
         train_rollout_worker=train_rollout_worker,

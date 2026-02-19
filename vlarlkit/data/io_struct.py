@@ -123,15 +123,17 @@ class RolloutResult:
         normalize_advantages: bool = True,
     ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
         """
-        Stack all rollout data into a single batch dict of torch tensors.
-
-        obs and next_obs are dicts of arrays, so they are stacked per key.
-        returns and advantages are included only if they have been computed.
-        If normalize_advantages is True, advantages are normalized over the full batch (N_used).
+        Stack all rollout data and flatten (T, n_envs) into a single sample
+        dimension N = T * n_envs.  Every tensor in the returned dict has
+        leading dim N (or is a dict of such tensors for obs / forward_inputs).
 
         Returns:
-            A dict with stacked torch tensors, each of shape (T, n_envs, ...).
+            A dict with flattened torch tensors, each of shape (N, ...).
         """
+        def _stack_and_flatten(arrays: list[np.ndarray]) -> torch.Tensor:
+            t = torch.from_numpy(np.stack(arrays))       # (T, n_envs, ...)
+            return t.reshape(t.shape[0] * t.shape[1], *t.shape[2:])  # (N, ...)
+
         batch: dict[str, Any] = {}
 
         for name in ("obs", "next_obs"):
@@ -139,36 +141,35 @@ class RolloutResult:
             stacked = {}
             for k in data_list[0].keys():
                 vals = [d[k] for d in data_list]
-                if not isinstance(vals[0], np.ndarray): # task descriptions are not numpy arrays
+                if not isinstance(vals[0], np.ndarray):
                     continue
-                stacked[k] = torch.from_numpy(np.stack(vals))
+                stacked[k] = _stack_and_flatten(vals)
             batch[name] = stacked
 
         for name in ("actions", "rewards", "terminations", "truncations", "prev_logprobs", "prev_values"):
             data_list = getattr(self, name)
             if len(data_list) > 0:
-                batch[name] = torch.from_numpy(np.stack(data_list))
+                batch[name] = _stack_and_flatten(data_list)
 
         if self.forward_inputs:
             data_list = self.forward_inputs
             keys = data_list[0].keys()
             batch["forward_inputs"] = {
-                k: torch.from_numpy(np.stack([d[k] for d in data_list]))
+                k: _stack_and_flatten([d[k] for d in data_list])
                 for k in keys
             }
 
         if self.returns is not None:
-            batch["returns"] = torch.from_numpy(self.returns)
+            batch["returns"] = torch.from_numpy(self.returns.reshape(-1))
         if self.advantages is not None:
-            batch["advantages"] = torch.from_numpy(self.advantages)
+            batch["advantages"] = torch.from_numpy(self.advantages.reshape(-1))
 
         if normalize_advantages and "advantages" in batch:
             adv = batch["advantages"]
-            N_total = adv.shape[0] * adv.shape[1]
-            N_used = (N_total // world_size) * world_size
-            adv_flat = adv.reshape(-1)[:N_used]
-            mean = adv_flat.mean().item()
-            std = (adv_flat.std() + 1e-8).item()
+            N_used = (adv.shape[0] // world_size) * world_size
+            adv_used = adv[:N_used]
+            mean = adv_used.mean().item()
+            std = (adv_used.std() + 1e-8).item()
             batch["advantages"] = (adv - mean) / std
 
         return batch
