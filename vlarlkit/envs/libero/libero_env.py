@@ -45,9 +45,9 @@ from vlarlkit.envs.utils import (
 
 
 class LiberoEnv(gym.Env):
-    def __init__(self, cfg, num_envs):
+    def __init__(self, cfg, num_envs, rank: int = 0):
         self.cfg = cfg
-        self.seed = self.cfg.seed
+        self.seed = self.cfg.seed + rank
         self.num_envs = num_envs
         self.group_size = self.cfg.group_size
         self.num_group = self.num_envs // self.group_size

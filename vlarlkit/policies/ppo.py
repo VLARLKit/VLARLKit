@@ -132,18 +132,21 @@ class PPOPolicy:
         huber_delta = float(self.algo_cfg.get("huber_delta", 10.0))
         entropy_bonus = float(self.algo_cfg.get("entropy_bonus", 0.0))
 
-        advantages_flat = batch["advantages"]
-        prev_logprobs_flat = batch["prev_logprobs"]
-        prev_values_flat = batch["prev_values"]
-        returns_flat = batch["returns"]
-        forward_inputs_flat = batch["forward_inputs"]
+        advantages = batch["advantages"] # (batch_size,)
+        prev_logprobs = batch["prev_logprobs"] # (batch_size, action_chunk, action_dim)
+        prev_values = batch["prev_values"] # (batch_size, 1)
+        returns = batch["returns"] # (batch_size,)
+        forward_inputs = batch["forward_inputs"]
+        loss_mask = batch.get("loss_mask", None)  # (batch_size,) or None
 
-        if prev_logprobs_flat.dim() > 1:
-            prev_logprobs_flat = prev_logprobs_flat.sum(
-                dim=tuple(range(1, prev_logprobs_flat.dim()))
+        if prev_logprobs.dim() > 1:
+            prev_logprobs = prev_logprobs.sum(
+                dim=tuple(range(1, prev_logprobs.dim())) # (batch_size,)
             )
+        if prev_values.dim() > 1:
+            prev_values = prev_values.squeeze(-1) # (batch_size,)
 
-        N = advantages_flat.shape[0]
+        N = advantages.shape[0]
 
         total_policy_loss = 0.0
         total_value_loss = 0.0
@@ -156,35 +159,35 @@ class PPOPolicy:
                 end = min(start + minibatch_size, N)
                 mb_inds = perm[start:end]
 
-                mb_advantages = advantages_flat[mb_inds]
-                mb_prev_logprobs = prev_logprobs_flat[mb_inds]
-                mb_returns = returns_flat[mb_inds]
-                mb_forward_inputs = self._slice_batch(forward_inputs_flat, mb_inds)
+                mb_advantages = advantages[mb_inds]
+                mb_prev_logprobs = prev_logprobs[mb_inds]
+                mb_returns = returns[mb_inds]
+                mb_forward_inputs = self._slice_batch(forward_inputs, mb_inds)
+                mb_mask = loss_mask[mb_inds] if loss_mask is not None else None
 
                 out = self.model(
                     forward_inputs=mb_forward_inputs,
                     compute_values=True,
                 )
-                logprobs = out["logprobs"]
-                values = out["values"]
-                entropy = out["entropy"]
+                logprobs = out["logprobs"] # (batch_size, action_chunk, action_dim)
+                values = out["values"] # (batch_size,)
+                entropy = out["entropy"] # (batch_size, 1)
 
                 if logprobs.dim() > 1:
-                    logprobs = logprobs.sum(dim=tuple(range(1, logprobs.dim())))
+                    logprobs = logprobs.sum(dim=tuple(range(1, logprobs.dim()))) # (batch_size,)
                 if values.dim() > 1:
-                    values = values.squeeze(-1)
-                entropy = entropy.reshape(-1).mean()
+                    values = values.squeeze(-1) # (batch_size,)
 
                 ratio = torch.exp(logprobs - mb_prev_logprobs)
                 surr1 = ratio * mb_advantages
                 surr2 = torch.clamp(
                     ratio, 1.0 - clip_ratio_low, 1.0 + clip_ratio_high
                 ) * mb_advantages
-                policy_loss = -torch.min(surr1, surr2).mean()
+                per_sample_policy_loss = -torch.min(surr1, surr2)
 
                 if value_clip > 0:
-                    values_clipped = prev_values_flat[mb_inds] + torch.clamp(
-                        values - prev_values_flat[mb_inds],
+                    values_clipped = prev_values[mb_inds] + torch.clamp(
+                        values - prev_values[mb_inds],
                         -value_clip,
                         value_clip,
                     )
@@ -194,17 +197,29 @@ class PPOPolicy:
 
                 value_residual = value_target - mb_returns
                 if huber_delta > 0:
-                    value_loss = torch.where(
+                    per_sample_value_loss = torch.where(
                         torch.abs(value_residual) <= huber_delta,
                         0.5 * value_residual**2,
                         huber_delta * (torch.abs(value_residual) - 0.5 * huber_delta),
-                    ).mean()
+                    )
                 else:
-                    value_loss = 0.5 * (value_residual**2).mean()
+                    per_sample_value_loss = 0.5 * (value_residual**2)
+
+                per_sample_entropy = entropy.reshape(-1)
+
+                if mb_mask is not None:
+                    mask_sum = mb_mask.sum().clamp(min=1)
+                    policy_loss = (per_sample_policy_loss * mb_mask).sum() / mask_sum
+                    value_loss = (per_sample_value_loss * mb_mask).sum() / mask_sum
+                    entropy_val = (per_sample_entropy * mb_mask).sum() / mask_sum
+                else:
+                    policy_loss = per_sample_policy_loss.mean()
+                    value_loss = per_sample_value_loss.mean()
+                    entropy_val = per_sample_entropy.mean()
 
                 loss = policy_loss + value_loss
                 if entropy_bonus != 0:
-                    loss = loss - entropy_bonus * entropy
+                    loss = loss - entropy_bonus * entropy_val
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -216,7 +231,7 @@ class PPOPolicy:
 
                 total_policy_loss += policy_loss.detach().item()
                 total_value_loss += value_loss.detach().item()
-                total_entropy += entropy.detach().item()
+                total_entropy += entropy_val.detach().item()
                 num_updates += 1
 
         if self._lr_scheduler is not None:

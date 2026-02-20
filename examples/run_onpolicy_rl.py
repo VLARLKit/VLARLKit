@@ -1,8 +1,11 @@
 """
 Usage (multi-GPU with torchrun):
-    torchrun --nproc_per_node=2 examples/run.py
+    torchrun --nproc_per_node=2 examples/run_onpolicy_rl.py
 """
 import logging
+import random
+
+import numpy as np
 import torch
 import torch.distributed as dist
 
@@ -17,11 +20,15 @@ from vlarlkit.rollouts import Rollout
 from vlarlkit.runners import OnPolicyRunner
 
 
-def get_env(cfg: DictConfig, mode: str = "train"):
-    """Build training or eval env from config."""
-    env_cfg = cfg.env.get(mode, cfg.env.train)
-    num_envs = int(env_cfg.get("total_num_envs"))
-    return LiberoEnv(env_cfg, num_envs=num_envs)
+def get_env(cfg: DictConfig, mode: str, world_size: int, rank: int):
+    """Build training or eval env from config, splitting envs across ranks."""
+    env_cfg = cfg.env.get(mode)
+    total_num_envs = int(env_cfg.get("total_num_envs"))
+    num_envs = total_num_envs // world_size
+    assert num_envs > 0, (
+        f"total_num_envs ({total_num_envs}) must be >= world_size ({world_size})"
+    )
+    return LiberoEnv(env_cfg, num_envs=num_envs, rank=rank)
 
 
 @hydra.main(
@@ -33,6 +40,7 @@ def main(cfg: DictConfig) -> None:
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
     rank = dist.get_rank()
+    world_size = dist.get_world_size()
 
     # initialize logger
     logger = logging.getLogger("vlarlkit.runner") if rank == 0 else None
@@ -42,22 +50,25 @@ def main(cfg: DictConfig) -> None:
     # transformers init) land on the correct GPU.
     torch.cuda.set_device(rank)
 
-    # All ranks: policy.
-    # Rank 0 only: envs + rollout workers.
+    # Set global random seeds (different per rank for data diversity)
+    seed = int(cfg.runner.seed)
+    random.seed(seed + rank)
+    np.random.seed(seed + rank)
+    torch.manual_seed(seed + rank)
+    torch.cuda.manual_seed_all(seed + rank)
+
+    # All ranks: policy, envs, and rollout workers.
     model = get_model(cfg.model)
     policy = PPOPolicy(cfg, model, rank)
 
-    train_rollout_worker = None
-    eval_rollout_worker = None
-    if rank == 0:
-        train_env = get_env(cfg, "train")
-        eval_env = get_env(cfg, "eval")
-        actor_model = get_model(cfg.model)
-        actor_model.to(f"cuda:{rank}")
-        train_rollout_result = RolloutResult() # store rollout data
-        eval_rollout_result = RolloutResult()
-        train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train")
-        eval_rollout_worker = Rollout(cfg, eval_env, actor_model, eval_rollout_result, mode="eval")
+    train_env = get_env(cfg, "train", world_size, rank)
+    eval_env = get_env(cfg, "eval", world_size, rank)
+    actor_model = get_model(cfg.model)
+    actor_model.to(f"cuda:{rank}")
+    train_rollout_result = RolloutResult()
+    eval_rollout_result = RolloutResult()
+    train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train")
+    eval_rollout_worker = Rollout(cfg, eval_env, actor_model, eval_rollout_result, mode="eval")
 
     runner = OnPolicyRunner(
         cfg=cfg,

@@ -117,15 +117,39 @@ class RolloutResult:
         self.returns = advantages + values
         self.advantages = advantages
 
+    def compute_loss_mask(self) -> np.ndarray:
+        """Compute a boolean mask that is True before the first termination per env.
+
+        Returns:
+            Boolean array of shape (T * n_envs,).
+        """
+        terminations = np.stack(self.terminations).astype(np.float32)  # (T, n_envs)
+        cum_term = np.cumsum(terminations, axis=0)
+        shifted = np.zeros_like(cum_term)
+        shifted[1:] = cum_term[:-1]
+        return (shifted == 0).reshape(-1).astype(bool)
+
+    def norm_adv(self, mean: float, std: float) -> None:
+        """Normalize advantages in-place with the given global mean and std."""
+        self.advantages = (self.advantages - mean) / std
+
     def get_batch(
         self,
-        world_size: int = 1,
-        normalize_advantages: bool = True,
+        compute_loss_masks: bool = False,
     ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
         """
         Stack all rollout data and flatten (T, n_envs) into a single sample
         dimension N = T * n_envs.  Every tensor in the returned dict has
         leading dim N (or is a dict of such tensors for obs / forward_inputs).
+
+        Advantage normalization should be done externally via
+        compute_adv_stats() + norm_adv() before calling this method.
+
+        Args:
+            compute_loss_masks: If True, compute a loss_mask that zeros out
+                samples after the first termination per env. The termination
+                step itself is kept (mask=1); all subsequent steps are masked
+                (mask=0).
 
         Returns:
             A dict with flattened torch tensors, each of shape (N, ...).
@@ -159,17 +183,14 @@ class RolloutResult:
                 for k in keys
             }
 
+        if compute_loss_masks:
+            batch["loss_mask"] = torch.from_numpy(
+                self.compute_loss_mask().astype(np.float32)
+            )  # (N,)
+
         if self.returns is not None:
             batch["returns"] = torch.from_numpy(self.returns.reshape(-1))
         if self.advantages is not None:
             batch["advantages"] = torch.from_numpy(self.advantages.reshape(-1))
-
-        if normalize_advantages and "advantages" in batch:
-            adv = batch["advantages"]
-            N_used = (adv.shape[0] // world_size) * world_size
-            adv_used = adv[:N_used]
-            mean = adv_used.mean().item()
-            std = (adv_used.std() + 1e-8).item()
-            batch["advantages"] = (adv - mean) / std
 
         return batch

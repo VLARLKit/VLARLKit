@@ -2,7 +2,9 @@ import functools
 import logging
 from typing import Any
 
+import numpy as np
 import torch
+import torch.distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
 from torch.distributed.fsdp.wrap import (
@@ -156,3 +158,76 @@ def wrap_model_with_fsdp(model: BaseModel, fsdp_cfg: dict, rank: int) -> FSDP:
             fsdp_kwargs["mixed_precision"] = mp
 
     return FSDP(model, **fsdp_kwargs)
+
+
+def allreduce_mean_std(
+    values: dict[str, np.ndarray],
+    device: torch.device,
+    mask: np.ndarray | None = None,
+) -> dict[str, tuple[float, float]]:
+    """Compute global (mean, std) for each 1-D array across all ranks.
+
+    Packs all local statistics into a single tensor and performs one
+    ``all_reduce`` call, so the cost is constant regardless of the number
+    of keys.
+
+    Args:
+        values: Dict mapping names to 1-D numpy arrays on this rank.
+        device: CUDA device for the all-reduce operation.
+        mask: Optional boolean mask applied to *all* arrays; only elements
+              where mask is True are counted.
+
+    Returns:
+        Dict mapping each name to a ``(mean, std)`` tuple.
+    """
+    keys = sorted(values.keys())
+
+    packed: list[float] = []
+    for k in keys:
+        arr = values[k].reshape(-1).astype(np.float64)
+        if mask is not None:
+            arr = arr[mask.reshape(-1).astype(bool)]
+        packed.append(float(arr.sum()))
+        packed.append(float((arr ** 2).sum()))
+    packed.append(float(arr.shape[0]))  # count (same for all keys)
+
+    stats = torch.tensor(packed, dtype=torch.float64, device=device)
+    dist.all_reduce(stats, op=dist.ReduceOp.SUM)
+
+    total_count = stats[-1].item()
+    result: dict[str, tuple[float, float]] = {}
+    for i, k in enumerate(keys):
+        total_sum = stats[2 * i].item()
+        total_sq_sum = stats[2 * i + 1].item()
+        mean = total_sum / total_count
+        std = max(0.0, total_sq_sum / total_count - mean ** 2) ** 0.5
+        result[k] = (mean, std)
+    return result
+
+
+def allreduce_mean(
+    metrics: dict[str, float],
+    device: torch.device,
+) -> dict[str, float]:
+    """Average scalar metrics across all ranks via a single all-reduce."""
+    keys = sorted(metrics.keys())
+    tensor = torch.tensor([metrics[k] for k in keys], device=device)
+    dist.all_reduce(tensor, op=dist.ReduceOp.AVG)
+    return dict(zip(keys, tensor.tolist()))
+
+
+def sync_fsdp_to_model(
+    fsdp_model: torch.nn.Module, target_model: torch.nn.Module,
+) -> None:
+    """Copy full state dict from an FSDP model to a plain model on all ranks."""
+    from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+
+    full_cfg = FullStateDictConfig(offload_to_cpu=False, rank0_only=False)
+    with FSDP.state_dict_type(fsdp_model, StateDictType.FULL_STATE_DICT, full_cfg):
+        state = fsdp_model.state_dict()
+
+    for prefix in ("_fsdp_module.module.", "module."):
+        if state and any(k.startswith(prefix) for k in state):
+            state = {k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)}
+            break
+    target_model.load_state_dict(state, strict=False)

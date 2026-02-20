@@ -98,6 +98,6 @@ class Rollout:
         if self.mode == "eval":
             return env_info["final_info"]["episode"]
 
-    def rollout(self):
+    def run_rollout(self):
         for epoch in range(self.cfg.algorithm.rollout_epochs):
             self.rollout_one_epoch()
