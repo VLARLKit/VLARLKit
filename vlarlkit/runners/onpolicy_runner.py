@@ -6,22 +6,14 @@ import torch.distributed as dist
 from omegaconf import DictConfig
 
 from vlarlkit.rollouts.rollout import Rollout
+from vlarlkit.utils.conversion_utils import to_device
 from vlarlkit.utils.fsdp_utils import allreduce_mean, allreduce_mean_std, sync_fsdp_to_model
-
-
-def _to_device(obj: Any, device: torch.device) -> Any:
-    """Recursively move nested dict of tensors to *device*."""
-    if isinstance(obj, dict):
-        return {k: _to_device(v, device) for k, v in obj.items()}
-    if torch.is_tensor(obj):
-        return obj.to(device)
-    return obj
 
 
 class OnPolicyRunner:
     """
     On-Policy RL runner: all ranks perform rollout independently, then
-    all-reduce advantage stats for normalization.  Training uses FSDP
+    all-reduce advantage stats for normalization. Training uses FSDP
     for gradient synchronization.
     """
 
@@ -33,14 +25,7 @@ class OnPolicyRunner:
         eval_rollout_worker: Rollout | None = None,
         logger: Any = None,
     ) -> None:
-        """
-        Args:
-            cfg: Full config (algorithm, training, env, etc.).
-            policy: Policy instance (e.g. PPO), created in run.py. Required on all ranks.
-            train_rollout_worker: Rollout instance for training data collection. Required on all ranks.
-            eval_rollout_worker: Rollout instance for evaluation; used when eval_interval > 0.
-            logger: Logger instance (optional, typically only on rank 0).
-        """
+
         self.cfg = cfg
         self.policy = policy
         self.train_rollout_worker = train_rollout_worker
@@ -71,12 +56,11 @@ class OnPolicyRunner:
         start_time = time.time()
 
         for epoch in range(max_epochs):
-            rr = self.train_rollout_worker.rollout_result
-            rr.clear()
-
             # rollout
             rollout_start_time = time.time()
-            self.train_rollout_worker.run_rollout()
+            rr = self.train_rollout_worker.rollout_result
+            self.train_rollout_worker.init_rollout()
+            self.train_rollout_worker.run_rollout(self.cfg.algorithm.rollout_epochs)
             rollout_end_time = time.time()
             if self.rank == 0 and self.logger:
                 self.logger.info(f"Collected training data in {rollout_end_time - rollout_start_time:.2f}s")
@@ -97,7 +81,7 @@ class OnPolicyRunner:
 
             # update
             batch = rr.get_batch(compute_loss_masks=compute_loss_masks)
-            batch = _to_device(batch, self.device)
+            batch = to_device(batch, self.device)
             update_start_time = time.time()
             metrics = self.policy.run_update(batch)
             update_end_time = time.time()
@@ -131,19 +115,15 @@ class OnPolicyRunner:
         if self.eval_rollout_worker is None:
             return
 
-        if self.rank == 0 and self.logger:
-            self.logger.info("Running evaluation...")
-
-        sync_fsdp_to_model(self.policy.get_model(), self.eval_rollout_worker.actor_model)
         self.eval_rollout_worker.init_rollout()
-        rollout_result = self.eval_rollout_worker.rollout_one_epoch()
+        rollout_result = self.eval_rollout_worker.run_rollout(self.cfg.algorithm.eval_rollout_epochs)
 
         stats = allreduce_mean_std({
             "success": rollout_result["success_once"],
             "episode_len": rollout_result["episode_len"],
         }, self.device)
 
-        if self.rank == 0 and self.logger:
+        if self.rank == 0:
             eval_metrics = {
                 "eval/success_rate_mean": stats["success"][0],
                 "eval/success_rate_std": stats["success"][1],

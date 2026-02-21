@@ -9,7 +9,7 @@ algorithm:
   group_size: 1
   reward_coef: 1.0
   rollout_epochs: 4
-  eval_rollout_epochs: 1  # used when runner.eval_interval > 0
+  eval_rollout_epochs: 4  # used when runner.eval_interval > 0
 
   update_epochs: 4
   minibatch_size: 16

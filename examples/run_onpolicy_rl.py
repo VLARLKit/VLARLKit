@@ -57,12 +57,15 @@ def main(cfg: DictConfig) -> None:
     torch.manual_seed(seed + rank)
     torch.cuda.manual_seed_all(seed + rank)
 
-    # All ranks: policy, envs, and rollout workers.
+    # Initialize policy
     model = get_model(cfg.model)
     policy = PPOPolicy(cfg, model, rank)
 
+    # Initialize envs
     train_env = get_env(cfg, "train", world_size, rank)
     eval_env = get_env(cfg, "eval", world_size, rank)
+
+    # Initialize rollout workers
     actor_model = get_model(cfg.model)
     actor_model.to(f"cuda:{rank}")
     train_rollout_result = RolloutResult()

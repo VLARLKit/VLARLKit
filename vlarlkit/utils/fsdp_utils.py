@@ -160,6 +160,23 @@ def wrap_model_with_fsdp(model: BaseModel, fsdp_cfg: dict, rank: int) -> FSDP:
     return FSDP(model, **fsdp_kwargs)
 
 
+def sync_fsdp_to_model(
+    fsdp_model: torch.nn.Module, target_model: torch.nn.Module,
+) -> None:
+    """Copy full state dict from an FSDP model to a plain model on all ranks."""
+    from torch.distributed.fsdp import FullStateDictConfig, StateDictType
+
+    full_cfg = FullStateDictConfig(offload_to_cpu=False, rank0_only=False)
+    with FSDP.state_dict_type(fsdp_model, StateDictType.FULL_STATE_DICT, full_cfg):
+        state = fsdp_model.state_dict()
+
+    for prefix in ("_fsdp_module.module.", "module."):
+        if state and any(k.startswith(prefix) for k in state):
+            state = {k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)}
+            break
+    target_model.load_state_dict(state, strict=False)
+
+
 def allreduce_mean_std(
     values: dict[str, np.ndarray],
     device: torch.device,
@@ -214,20 +231,3 @@ def allreduce_mean(
     tensor = torch.tensor([metrics[k] for k in keys], device=device)
     dist.all_reduce(tensor, op=dist.ReduceOp.AVG)
     return dict(zip(keys, tensor.tolist()))
-
-
-def sync_fsdp_to_model(
-    fsdp_model: torch.nn.Module, target_model: torch.nn.Module,
-) -> None:
-    """Copy full state dict from an FSDP model to a plain model on all ranks."""
-    from torch.distributed.fsdp import FullStateDictConfig, StateDictType
-
-    full_cfg = FullStateDictConfig(offload_to_cpu=False, rank0_only=False)
-    with FSDP.state_dict_type(fsdp_model, StateDictType.FULL_STATE_DICT, full_cfg):
-        state = fsdp_model.state_dict()
-
-    for prefix in ("_fsdp_module.module.", "module."):
-        if state and any(k.startswith(prefix) for k in state):
-            state = {k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)}
-            break
-    target_model.load_state_dict(state, strict=False)

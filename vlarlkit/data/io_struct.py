@@ -1,19 +1,10 @@
-from dataclasses import dataclass, field
-from typing import Any, Optional
-
 import numpy as np
 import torch
 
+from dataclasses import dataclass, field
+from typing import Any, Optional
 
-def _to_numpy(x: Any) -> Any:
-    """Convert a torch.Tensor or numpy array to numpy, no-op for other types."""
-    if isinstance(x, torch.Tensor):
-        return x.detach().cpu().numpy()
-    if isinstance(x, np.ndarray):
-        return x
-    if isinstance(x, dict):
-        return {k: _to_numpy(v) for k, v in x.items()}
-    return x
+from vlarlkit.utils.conversion_utils import to_numpy
 
 
 @dataclass(kw_only=True)
@@ -68,11 +59,11 @@ class RolloutResult:
         self.terminations.append(terminations)
         self.truncations.append(truncations)
         if prev_logprobs is not None:
-            self.prev_logprobs.append(_to_numpy(prev_logprobs))
+            self.prev_logprobs.append(to_numpy(prev_logprobs))
         if prev_values is not None:
-            self.prev_values.append(_to_numpy(prev_values))
+            self.prev_values.append(to_numpy(prev_values))
         if forward_inputs is not None:
-            self.forward_inputs.append(_to_numpy(forward_inputs))
+            self.forward_inputs.append(to_numpy(forward_inputs))
 
     def compute_returns_and_advantages(
         self,

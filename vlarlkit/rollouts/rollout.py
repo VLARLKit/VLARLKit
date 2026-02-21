@@ -95,9 +95,16 @@ class Rollout:
         if self.auto_reset:
             self.last_obs = obs
 
-        if self.mode == "eval":
+        # return the episode info
+        if "final_info" in env_info:
             return env_info["final_info"]["episode"]
+        else:
+            return env_info["episode"]
 
-    def run_rollout(self):
-        for epoch in range(self.cfg.algorithm.rollout_epochs):
-            self.rollout_one_epoch()
+    def run_rollout(self, rollout_epochs: int):
+        rollout_infos = []
+        for epoch in range(rollout_epochs):
+            rollout_infos.append(self.rollout_one_epoch())
+        # list of dicts -> dict of lists
+        rollout_infos = {k: np.concatenate([info[k] for info in rollout_infos]) for k in rollout_infos[0]}
+        return rollout_infos
