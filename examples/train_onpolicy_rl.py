@@ -1,7 +1,3 @@
-"""
-Usage (multi-GPU with torchrun):
-    torchrun --nproc_per_node=2 examples/run_onpolicy_rl.py
-"""
 import logging
 import random
 
