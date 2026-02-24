@@ -5,6 +5,7 @@ from omegaconf import DictConfig
 from typing import Any
 
 from vlarlkit.models.base import BaseModel
+from vlarlkit.utils.conversion_utils import to_device
 from vlarlkit.utils.fsdp_utils import wrap_model_with_fsdp
 
 
@@ -154,16 +155,19 @@ class PPOPolicy:
         num_updates = 0
 
         for _ in range(update_epochs):
-            perm = torch.randperm(N, device=self.device)
+            perm = torch.randperm(N)
             for start in range(0, N, minibatch_size):
                 end = min(start + minibatch_size, N)
                 mb_inds = perm[start:end]
 
-                mb_advantages = advantages[mb_inds]
-                mb_prev_logprobs = prev_logprobs[mb_inds]
-                mb_returns = returns[mb_inds]
-                mb_forward_inputs = self._slice_batch(forward_inputs, mb_inds)
-                mb_mask = loss_mask[mb_inds] if loss_mask is not None else None
+                mb_advantages = advantages[mb_inds].to(self.device)
+                mb_prev_logprobs = prev_logprobs[mb_inds].to(self.device)
+                mb_prev_values = prev_values[mb_inds].to(self.device)
+                mb_returns = returns[mb_inds].to(self.device)
+                mb_forward_inputs = to_device(
+                    self._slice_batch(forward_inputs, mb_inds), self.device
+                )
+                mb_mask = loss_mask[mb_inds].to(self.device) if loss_mask is not None else None
 
                 out = self.model(
                     forward_inputs=mb_forward_inputs,
@@ -186,8 +190,8 @@ class PPOPolicy:
                 per_sample_policy_loss = -torch.min(surr1, surr2)
 
                 if value_clip > 0:
-                    values_clipped = prev_values[mb_inds] + torch.clamp(
-                        values - prev_values[mb_inds],
+                    values_clipped = mb_prev_values + torch.clamp(
+                        values - mb_prev_values,
                         -value_clip,
                         value_clip,
                     )

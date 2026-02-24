@@ -6,7 +6,6 @@ import torch.distributed as dist
 from omegaconf import DictConfig
 
 from vlarlkit.rollouts.rollout import Rollout
-from vlarlkit.utils.conversion_utils import to_device
 from vlarlkit.utils.fsdp_utils import allreduce_mean, allreduce_mean_std, sync_fsdp_to_model
 
 
@@ -81,7 +80,6 @@ class OnPolicyRunner:
 
             # update
             batch = rr.get_batch(compute_loss_masks=compute_loss_masks)
-            batch = to_device(batch, self.device)
             update_start_time = time.time()
             metrics = self.policy.run_update(batch)
             update_end_time = time.time()
@@ -99,8 +97,7 @@ class OnPolicyRunner:
 
             if (
                 eval_interval > 0
-                and (epoch + 1) % eval_interval == 0
-                and self.eval_rollout_worker is not None
+                and ((epoch + 1) % eval_interval == 0 or epoch == 0)
             ):
                 self._run_evaluate()
 
