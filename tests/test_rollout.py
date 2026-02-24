@@ -1,7 +1,7 @@
 import hydra
 from omegaconf import OmegaConf
 
-from vlarlkit.envs.libero.libero_env import LiberoEnv
+from vlarlkit.utils.remote_env import RemoteEnv
 from vlarlkit.data.io_struct import RolloutResult
 from vlarlkit.rollouts.rollout import Rollout
 from vlarlkit.models.openpi import get_model
@@ -15,7 +15,9 @@ def main(cfg):
     model.to("cuda:0")
     # print(model)
 
-    env = LiberoEnv(cfg.env.eval, num_envs=10)
+    host = cfg.env.get("env_client_host", "localhost")
+    base_port = int(cfg.env.get("env_client_base_port", 5550))
+    env = RemoteEnv(host=host, port=base_port, env_mode="eval")
     rollout_result = RolloutResult()
 
     rollout = Rollout(cfg, env, model, rollout_result)

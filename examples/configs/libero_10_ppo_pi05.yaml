@@ -44,7 +44,10 @@ algorithm:
     min_length: 1
 
 env:
+  env_client_host: "localhost"
+  env_client_base_port: 5550
   train:
+    seed: ${runner.seed}
     total_num_envs: 8
     auto_reset: False
     ignore_terminations: False
@@ -52,6 +55,7 @@ env:
     max_steps_per_rollout: 10
     reward_coef: ${algorithm.reward_coef}
   eval:
+    seed: ${runner.seed}
     total_num_envs: 8
     auto_reset: True
     ignore_terminations: True

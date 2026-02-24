@@ -11,17 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
 
 import multiprocessing
 import warnings
 from multiprocessing import connection
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Tuple, Union
 
 import gym
 import numpy as np
 from libero.libero.envs import OffScreenRenderEnv
 
-from vlarlkit.envs.venv import (
+from env_clients.venv import (
     BaseVectorEnv,
     CloudpickleWrapper,
     EnvWorker,
@@ -31,8 +32,8 @@ from vlarlkit.envs.venv import (
     _setup_buf,
 )
 
-gym_old_venv_step_type = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
-gym_new_venv_step_type = tuple[
+gym_old_venv_step_type = Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+gym_new_venv_step_type = Tuple[
     np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
 ]
 warnings.simplefilter("once", DeprecationWarning)

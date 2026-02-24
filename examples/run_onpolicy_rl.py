@@ -13,7 +13,7 @@ import hydra
 from omegaconf import DictConfig
 
 from vlarlkit.data.io_struct import RolloutResult
-from vlarlkit.envs.libero.libero_env import LiberoEnv
+from vlarlkit.utils.remote_env import RemoteEnv
 from vlarlkit.models.openpi import get_model
 from vlarlkit.policies import PPOPolicy
 from vlarlkit.rollouts import Rollout
@@ -21,14 +21,11 @@ from vlarlkit.runners import OnPolicyRunner
 
 
 def get_env(cfg: DictConfig, mode: str, world_size: int, rank: int):
-    """Build training or eval env from config, splitting envs across ranks."""
-    env_cfg = cfg.env.get(mode)
-    total_num_envs = int(env_cfg.get("total_num_envs"))
-    num_envs = total_num_envs // world_size
-    assert num_envs > 0, (
-        f"total_num_envs ({total_num_envs}) must be >= world_size ({world_size})"
-    )
-    return LiberoEnv(env_cfg, num_envs=num_envs, rank=rank)
+    """Connect to the remote env client for this rank."""
+    host = cfg.env.get("env_client_host", "localhost")
+    base_port = int(cfg.env.get("env_client_base_port", 5550))
+    port = base_port + rank
+    return RemoteEnv(host=host, port=port, env_mode=mode)
 
 
 @hydra.main(

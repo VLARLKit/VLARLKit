@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utils for evaluating policies in LIBERO simulation environments."""
+from __future__ import annotations
 
 import math
 from typing import Union

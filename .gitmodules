@@ -1,0 +1,3 @@
+[submodule "third_party/LIBERO"]
+	path = third_party/LIBERO
+	url = https://github.com/Lifelong-Robot-Learning/LIBERO

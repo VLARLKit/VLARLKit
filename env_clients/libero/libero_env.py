@@ -16,6 +16,7 @@
 # Modifications:
 #   Modified by VLARLKit Authors on 2026-02-11.
 # --------------------------------------------------------------------
+from __future__ import annotations
 
 import copy
 import os
@@ -29,14 +30,14 @@ from libero.libero.benchmark import Benchmark
 from libero.libero.envs import OffScreenRenderEnv
 from omegaconf.omegaconf import OmegaConf
 
-from vlarlkit.envs.libero.utils import (
+from .utils import (
     get_benchmark_overridden,
     get_libero_image,
     get_libero_wrist_image,
     quat2axisangle,
 )
-from vlarlkit.envs.libero.venv import ReconfigureSubprocEnv
-from vlarlkit.envs.utils import (
+from .venv import ReconfigureSubprocEnv
+from env_clients.utils import (
     list_of_dict_to_dict_of_list,
     put_info_on_image,
     save_rollout_video,
