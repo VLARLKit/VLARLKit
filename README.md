@@ -6,7 +6,7 @@ An elegant and researcher-friendly reinforcement learning toolkit for Vision-Lan
 
 - **Simple and clear implementation** — cleanly separated policy, rollout, runner, and model layers with minimal abstraction; easy to read, modify, and extend for research purposes
 - **Environment-decoupled architecture** — environments run as independent processes via ZMQ, eliminating dependency conflicts between different benchmark simulators
-- **Async off-policy training** — supports asynchronous off-policy training, enabling non-blocking data collection alongside model updates
+- **Async off-policy training (on building)** — supports asynchronous off-policy training, enabling non-blocking data collection alongside model updates
 
 ## Supported Algorithms, Base Models, and Benchmarks (Keeping progress)
 
@@ -51,6 +51,7 @@ pip install -e .
 ### Quick Start
 
 ```bash
+bash examples/run_onpolicy_rl.sh
 ```
 
 ## TODO
@@ -61,5 +62,4 @@ pip install -e .
 - [ ] Add OpenVLA base model support
 
 ## Acknowledgements
-
-This project is built upon [RLinf](https://github.com/RLinf/RLinf). The model integration and environment module implementations are primarily adapted from RLinf. We thank the RLinf team for their foundational work.
+We borrow some good designs from [RLinf](https://github.com/RLinf/RLinf). The model integration and environment module implementations are primarily adapted from RLinf. We thank the RLinf team for their foundational work.
