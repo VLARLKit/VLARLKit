@@ -26,7 +26,7 @@ def get_env(cfg: DictConfig, mode: str, world_size: int, rank: int):
 
 @hydra.main(
     config_path="configs",
-    config_name="libero_10_ppo_pi05",
+    config_name="libero_spatial_ppo_pi05",
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:

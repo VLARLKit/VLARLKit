@@ -1,7 +1,9 @@
 #!/bin/bash
+cd ~/codes/VLARLKit
 
 NPROC=4
-CONFIG="examples/configs/libero_10_ppo_pi05.yaml"
+CONFIG_NAME="libero_spatial_ppo_pi05"
+CONFIG="examples/configs/${CONFIG_NAME}.yaml"
 BASE_PORT=5550
 
 # launch environment clients (in the libero conda env)
@@ -17,7 +19,8 @@ done
 
 # launch training with torchrun
 uv run torchrun --nproc_per_node="$NPROC" \
-    examples/train_onpolicy_rl.py
+    examples/train_onpolicy_rl.py \
+    --config-name "$CONFIG_NAME"
 
 # cleanup: kill all client processes
 for pid in "${CLIENT_PIDS[@]}"; do
