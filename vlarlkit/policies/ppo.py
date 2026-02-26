@@ -1,3 +1,4 @@
+import logging
 import torch
 import torch.distributed as dist
 
@@ -7,6 +8,8 @@ from typing import Any
 from vlarlkit.models.base import BaseModel
 from vlarlkit.utils.conversion_utils import to_device
 from vlarlkit.utils.fsdp_utils import wrap_model_with_fsdp
+
+logger = logging.getLogger("vlarlkit.runner")
 
 
 class PPOPolicy:
@@ -76,6 +79,9 @@ class PPOPolicy:
                 eps=eps,
                 weight_decay=weight_decay,
             )
+
+        n_optim = sum(p.numel() for group in self.optimizer.param_groups for p in group["params"])
+        logger.info(f"Optimizable params: {n_optim:,}")
 
     def _setup_lr_scheduler(self) -> None:
         sched_type = self.optim_cfg.get("lr_scheduler", "constant")
