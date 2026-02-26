@@ -1,6 +1,6 @@
 # VLARLKit: An elegant PyTorch VLA-RL library
 
-An elegant and researcher-friendly reinforcement learning toolkit for Vision-Language-Action (VLA) models.
+An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) models.
 
 ## Features
 
@@ -49,6 +49,17 @@ pip install -e .
 ```
 
 ### Quick Start
+
+RL process is typically performing on a SFT model. So you need to download such an SFT model first.
+We highly recommand you to use models from RLinf community.
+
+```bash
+huggingface-cli download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
+```
+
+Then, change the model_path and asserts_dir in config file to your path.
+
+Now, you can lanuch the script to run!
 
 ```bash
 bash examples/run_onpolicy_rl.sh
