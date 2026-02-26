@@ -18,7 +18,7 @@ class Rollout:
         self.init_rollout()
 
     def init_rollout(self) -> None:
-        if not self.auto_reset:
+        if self.auto_reset:
             obs, _ = self.env.reset()
             self.last_obs = self.prepare_observations(obs)
         self.rollout_result.clear()
