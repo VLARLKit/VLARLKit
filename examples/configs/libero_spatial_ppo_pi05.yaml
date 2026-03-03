@@ -3,6 +3,11 @@ defaults:
   - envs/libero_spatial@env.eval
   - models/pi05@model
 
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+
 algorithm:
   normalize_advantages: True
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
@@ -100,7 +105,7 @@ training:
   
   fsdp_config:
     strategy: "fsdp"
-    sharding_strategy: "no_shard"
+    sharding_strategy: "full_shard"
     gradient_checkpointing: False # for openpi, gradient checkpointing is not supported, please do not change this value
     mixed_precision:
       param_dtype: ${model.precision}
@@ -111,3 +116,7 @@ runner:
   seed: 0
   max_epochs: 25
   eval_interval: 1
+  is_debug: False # if True, it will not generate any log files
+  logger:
+    project: "VLARLKit"
+    experiment_name: "libero_spatial_ppo_pi05"

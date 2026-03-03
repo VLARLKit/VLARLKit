@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Any
 
@@ -7,6 +8,8 @@ from omegaconf import DictConfig
 
 from vlarlkit.rollouts.rollout import Rollout
 from vlarlkit.utils.fsdp_utils import allreduce_mean, allreduce_mean_std, sync_fsdp_to_model
+
+logger = logging.getLogger("vlarlkit.runner")
 
 
 class OnPolicyRunner:
@@ -22,14 +25,14 @@ class OnPolicyRunner:
         policy: Any,
         train_rollout_worker: Rollout,
         eval_rollout_worker: Rollout | None = None,
-        logger: Any = None,
+        metric_logger: Any = None,
     ) -> None:
 
         self.cfg = cfg
         self.policy = policy
         self.train_rollout_worker = train_rollout_worker
         self.eval_rollout_worker = eval_rollout_worker
-        self.logger = logger
+        self.metric_logger = metric_logger
 
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
@@ -50,7 +53,7 @@ class OnPolicyRunner:
         )
 
         if self.rank == 0:
-            self.logger.info(f"Starting training for {max_epochs} epochs")
+            logger.info("Starting training for %d epochs", max_epochs)
 
         start_time = time.time()
 
@@ -61,8 +64,8 @@ class OnPolicyRunner:
             self.train_rollout_worker.init_rollout()
             self.train_rollout_worker.run_rollout(self.cfg.algorithm.rollout_epochs)
             rollout_end_time = time.time()
-            if self.rank == 0 and self.logger:
-                self.logger.info(f"Collected training data in {rollout_end_time - rollout_start_time:.2f}s")
+            if self.rank == 0:
+                logger.info("Collected training data in %.2fs", rollout_end_time - rollout_start_time)
 
             rr.compute_returns_and_advantages(
                 gamma=gamma,
@@ -87,11 +90,17 @@ class OnPolicyRunner:
             metrics = allreduce_mean(metrics, self.device)
 
             if self.rank == 0:
-                self.logger.info(f"Updated policy in {update_end_time - update_start_time:.2f}s")
+                logger.info("Updated policy in %.2fs", update_end_time - update_start_time)
                 train_metrics_str = ", ".join(
-                    [f"{k}={v:.4f}" for k, v in metrics.items()]
+                    f"{k}={v:.4f}" for k, v in metrics.items()
                 )
-                self.logger.info(f"Epoch {epoch}/{max_epochs} - Train: {train_metrics_str}")
+                logger.info("Epoch %d/%d - Train: %s", epoch, max_epochs, train_metrics_str)
+
+                if self.metric_logger is not None:
+                    self.metric_logger.log(
+                        {f"train/{k}": v for k, v in metrics.items()},
+                        step=epoch,
+                    )
 
             sync_fsdp_to_model(self.policy.get_model(), self.train_rollout_worker.actor_model)
 
@@ -99,15 +108,17 @@ class OnPolicyRunner:
                 eval_interval > 0
                 and ((epoch + 1) % eval_interval == 0 or epoch == 0)
             ):
-                self._run_evaluate()
+                self._run_evaluate(epoch)
 
             dist.barrier()
 
         total_time = time.time() - start_time
-        if self.rank == 0 and self.logger:
-            self.logger.info(f"Training completed in {total_time:.2f}s")
+        if self.rank == 0:
+            logger.info("Training completed in %.2fs", total_time)
+            if self.metric_logger is not None:
+                self.metric_logger.finish()
 
-    def _run_evaluate(self) -> None:
+    def _run_evaluate(self, epoch: int = 0) -> None:
         """Run eval on all ranks and all-reduce the results."""
         if self.eval_rollout_worker is None:
             return
@@ -128,6 +139,9 @@ class OnPolicyRunner:
                 "eval/episode_length_std": stats["episode_len"][1],
             }
             eval_metrics_str = ", ".join(
-                [f"{k}={v:.4f}" for k, v in eval_metrics.items()]
+                f"{k}={v:.4f}" for k, v in eval_metrics.items()
             )
-            self.logger.info(f"Eval metrics: {eval_metrics_str}")
+            logger.info("Eval metrics: %s", eval_metrics_str)
+
+            if self.metric_logger is not None:
+                self.metric_logger.log(eval_metrics, step=epoch)

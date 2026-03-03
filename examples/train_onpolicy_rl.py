@@ -5,8 +5,9 @@ import numpy as np
 import torch
 import torch.distributed as dist
 
+import wandb
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 from vlarlkit.data.io_struct import RolloutResult
 from vlarlkit.utils.remote_env import RemoteEnv
@@ -35,8 +36,17 @@ def main(cfg: DictConfig) -> None:
     rank = dist.get_rank()
     world_size = dist.get_world_size()
 
-    # initialize logger
-    logger = logging.getLogger("vlarlkit.runner") if rank == 0 else None
+    # Initialize wandb-logger on rank 0 only
+    if not cfg.runner.is_debug and rank == 0:
+        logger_cfg = cfg.get("runner.logger", {})
+        wandb.init(
+            project=logger_cfg.get("project", "VLARLKit"),
+            name=logger_cfg.get("experiment_name", "default"),
+            config=OmegaConf.to_container(cfg, resolve=True),
+        )
+        metric_logger = wandb
+    else:
+        metric_logger = None
 
     # Must be called before any model creation: sets the default CUDA device
     # for this process so that implicit CUDA ops (e.g. inside torch.compile,
@@ -71,7 +81,7 @@ def main(cfg: DictConfig) -> None:
         policy=policy,
         train_rollout_worker=train_rollout_worker,
         eval_rollout_worker=eval_rollout_worker,
-        logger=logger,
+        metric_logger=metric_logger,
     )
     runner.run()
 
