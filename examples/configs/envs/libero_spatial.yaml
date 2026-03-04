@@ -28,7 +28,6 @@ specific_reset_id: null # can be a number or null.
 video_cfg:
   save_video: True
   info_on_video: True
-  video_base_dir: ${runner.logger.log_path}/video/train
 
 init_params:
   camera_heights: 256
