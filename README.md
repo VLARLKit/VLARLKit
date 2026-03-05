@@ -57,7 +57,14 @@ We highly recommend you to use models from RLinf community.
 huggingface-cli download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
 ```
 
-Then, change the ``model_path`` and ``asserts_dir`` in config file to your path.
+Then, change the ``model_path`` and ``assets_dir`` in config file (examples/configs/libero_spatial_ppo_pi05.yaml) to your path.
+For example:
+```yaml
+model:
+  model_path: "<your download path>/RLinf-Pi05-LIBERO-SFT"
+  data:
+    assets_dir: "<your download path>/RLinf-Pi05-LIBERO-SFT/physical-intelligence/libero"
+```
 
 Now, you can lanuch the script to run!
 
@@ -74,3 +81,8 @@ bash examples/run_onpolicy_rl.sh
 
 ## Acknowledgements
 We borrow some good designs from [RLinf](https://github.com/RLinf/RLinf). The model integration and environment module implementations are primarily adapted from RLinf. We thank the RLinf team for their foundational work.
+
+# License
+This project is licensed under the MIT License (see LICENSE file).
+
+Some source files are derived from Apache-2.0 licensed projects. The original copyright notices are preserved in those files.
