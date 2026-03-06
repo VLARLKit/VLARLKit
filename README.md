@@ -26,7 +26,7 @@ We use [uv](https://docs.astral.sh/uv/) to manage Python dependencies. See the [
 git clone https://github.com/VLARLKit/VLARLKit.git
 cd VLARLKit
 GIT_LFS_SKIP_SMUDGE=1 uv sync
-GIT_LFS_SKIP_SMUDGE=1 uv pip install -e .
+uv pip install -e .
 # Apply the transformers library patches for openpi
 cp -r .venv/lib/python3.11/site-packages/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
 ```
