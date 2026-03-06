@@ -1,4 +1,3 @@
-import logging
 import random
 
 import numpy as np
@@ -7,6 +6,7 @@ import torch.distributed as dist
 
 import wandb
 import hydra
+from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from vlarlkit.data.io_struct import RolloutResult
@@ -43,6 +43,7 @@ def main(cfg: DictConfig) -> None:
             project=logger_cfg.get("project", "VLARLKit"),
             name=logger_cfg.get("experiment_name", "default"),
             config=OmegaConf.to_container(cfg, resolve=True),
+            dir=HydraConfig.get().runtime.output_dir,
         )
         metric_logger = wandb
     else:

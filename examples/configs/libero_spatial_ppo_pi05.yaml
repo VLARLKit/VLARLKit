@@ -5,8 +5,7 @@ defaults:
 
 hydra:
   run:
-    dir: .
-  output_subdir: null
+    dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
 
 algorithm:
   normalize_advantages: True
@@ -17,7 +16,7 @@ algorithm:
   eval_rollout_epochs: 8  # used when runner.eval_interval > 0
 
   update_epochs: 1
-  minibatch_size: 2048
+  minibatch_size: 512
   adv_type: gae
   loss_type: actor_critic
   kl_beta: 0.0
