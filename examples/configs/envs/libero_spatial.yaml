@@ -26,7 +26,7 @@ use_ordered_reset_state_ids: False
 specific_reset_id: null # can be a number or null.
 
 video_cfg:
-  save_video: True
+  save_video: False
   info_on_video: True
 
 init_params:
