@@ -196,25 +196,27 @@ class PPOPolicy:
                 ) * mb_advantages
                 per_sample_policy_loss = -torch.min(surr1, surr2)
 
+                def _value_loss(residual: torch.Tensor) -> torch.Tensor:
+                    if huber_delta > 0:
+                        return torch.where(
+                            torch.abs(residual) <= huber_delta,
+                            0.5 * residual**2,
+                            huber_delta * (torch.abs(residual) - 0.5 * huber_delta),
+                        )
+                    return 0.5 * (residual**2)
+
                 if value_clip > 0:
                     values_clipped = mb_prev_values + torch.clamp(
                         values - mb_prev_values,
                         -value_clip,
                         value_clip,
                     )
-                    value_target = values_clipped
-                else:
-                    value_target = values
-
-                value_residual = value_target - mb_returns
-                if huber_delta > 0:
-                    per_sample_value_loss = torch.where(
-                        torch.abs(value_residual) <= huber_delta,
-                        0.5 * value_residual**2,
-                        huber_delta * (torch.abs(value_residual) - 0.5 * huber_delta),
+                    per_sample_value_loss = torch.max(
+                        _value_loss(values - mb_returns),
+                        _value_loss(values_clipped - mb_returns),
                     )
                 else:
-                    per_sample_value_loss = 0.5 * (value_residual**2)
+                    per_sample_value_loss = _value_loss(values - mb_returns)
 
                 per_sample_entropy = entropy.reshape(-1)
 
