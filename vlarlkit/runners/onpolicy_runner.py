@@ -51,6 +51,9 @@ class OnPolicyRunner:
             not train_env_cfg.auto_reset and
             not train_env_cfg.ignore_terminations
         )
+        episode_len = (
+            int(train_env_cfg.max_steps_per_rollout) // int(self.cfg.model.num_action_chunks)
+        )
 
         if self.rank == 0:
             logger.info("Starting training for %d epochs", max_epochs)
@@ -74,7 +77,7 @@ class OnPolicyRunner:
             )
 
             if normalize_advantages:
-                mask = rr.compute_loss_mask() if compute_loss_masks else None
+                mask = rr.compute_loss_mask(episode_len=episode_len) if compute_loss_masks else None
                 stats = allreduce_mean_std(
                     {"adv": rr.advantages}, self.device, mask=mask,
                 )
@@ -82,7 +85,7 @@ class OnPolicyRunner:
                 rr.norm_adv(mean, std + 1e-8)
 
             # update
-            batch = rr.get_batch(compute_loss_masks=compute_loss_masks)
+            batch = rr.get_batch(compute_loss_masks=compute_loss_masks, episode_len=episode_len)
             update_start_time = time.time()
             metrics = self.policy.run_update(batch)
             update_end_time = time.time()

@@ -108,16 +108,18 @@ class RolloutResult:
         self.returns = advantages + values
         self.advantages = advantages
 
-    def compute_loss_mask(self) -> np.ndarray:
-        """Compute a boolean mask that is True before the first termination per env.
-
-        Returns:
-            Boolean array of shape (T * n_envs,).
-        """
+    def compute_loss_mask(self, episode_len: int) -> np.ndarray:
+        """Compute a boolean mask that is True before the first termination per env."""
         terminations = np.stack(self.terminations).astype(np.float32)  # (T, n_envs)
-        cum_term = np.cumsum(terminations, axis=0)
-        shifted = np.zeros_like(cum_term)
-        shifted[1:] = cum_term[:-1]
+        T, n_envs = terminations.shape
+        assert T % episode_len == 0, (
+            f"T ({T}) must be divisible by episode_len ({episode_len})"
+        )
+        num_episodes = T // episode_len
+        term = terminations.reshape(num_episodes, episode_len, n_envs)
+        cum = np.cumsum(term, axis=1)
+        shifted = np.zeros_like(cum)
+        shifted[:, 1:] = cum[:, :-1]
         return (shifted == 0).reshape(-1).astype(bool)
 
     def norm_adv(self, mean: float, std: float) -> None:
@@ -127,6 +129,7 @@ class RolloutResult:
     def get_batch(
         self,
         compute_loss_masks: bool = False,
+        episode_len: int | None = None,
     ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
         """
         Stack all rollout data and flatten (T, n_envs) into a single sample
@@ -176,7 +179,7 @@ class RolloutResult:
 
         if compute_loss_masks:
             batch["loss_mask"] = torch.from_numpy(
-                self.compute_loss_mask().astype(np.float32)
+                self.compute_loss_mask(episode_len=episode_len).astype(np.float32)
             )  # (N,)
 
         if self.returns is not None:
