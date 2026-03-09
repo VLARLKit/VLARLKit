@@ -92,18 +92,15 @@ class OnPolicyRunner:
 
             metrics = allreduce_mean(metrics, self.device)
 
+            epoch_log: dict[str, float] = {}
+
             if self.rank == 0:
                 logger.info("Updated policy in %.2fs", update_end_time - update_start_time)
                 train_metrics_str = ", ".join(
                     f"{k}={v:.4f}" for k, v in metrics.items()
                 )
                 logger.info("Epoch %d/%d - Train: %s", epoch, max_epochs, train_metrics_str)
-
-                if self.metric_logger is not None:
-                    self.metric_logger.log(
-                        {f"train/{k}": v for k, v in metrics.items()},
-                        step=epoch,
-                    )
+                epoch_log.update({f"train/{k}": v for k, v in metrics.items()})
 
             sync_fsdp_to_model(self.policy.get_model(), self.train_rollout_worker.actor_model)
 
@@ -111,7 +108,12 @@ class OnPolicyRunner:
                 eval_interval > 0
                 and ((epoch + 1) % eval_interval == 0 or epoch == 0)
             ):
-                self._run_evaluate(epoch)
+                eval_metrics = self._run_evaluate(epoch)
+                if self.rank == 0 and eval_metrics:
+                    epoch_log.update(eval_metrics)
+
+            if self.rank == 0 and self.metric_logger is not None and epoch_log:
+                self.metric_logger.log(epoch_log, step=epoch)
 
             dist.barrier()
 
@@ -121,10 +123,14 @@ class OnPolicyRunner:
             if self.metric_logger is not None:
                 self.metric_logger.finish()
 
-    def _run_evaluate(self, epoch: int = 0) -> None:
-        """Run eval on all ranks and all-reduce the results."""
+    def _run_evaluate(self, epoch: int = 0) -> dict[str, float] | None:
+        """Run eval on all ranks and all-reduce the results.
+
+        Returns:
+            Eval metrics dict on rank 0, None on other ranks or if no eval worker.
+        """
         if self.eval_rollout_worker is None:
-            return
+            return None
 
         self.eval_rollout_worker.init_rollout()
         rollout_result = self.eval_rollout_worker.run_rollout(self.cfg.algorithm.eval_rollout_epochs)
@@ -145,6 +151,6 @@ class OnPolicyRunner:
                 f"{k}={v:.4f}" for k, v in eval_metrics.items()
             )
             logger.info("Eval metrics: %s", eval_metrics_str)
+            return eval_metrics
 
-            if self.metric_logger is not None:
-                self.metric_logger.log(eval_metrics, step=epoch)
+        return None

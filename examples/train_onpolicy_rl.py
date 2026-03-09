@@ -38,7 +38,7 @@ def main(cfg: DictConfig) -> None:
 
     # Initialize wandb-logger on rank 0 only
     if not cfg.runner.is_debug and rank == 0:
-        logger_cfg = cfg.get("runner.logger", {})
+        logger_cfg = cfg.runner.get("logger", {})
         wandb.init(
             project=logger_cfg.get("project", "VLARLKit"),
             name=logger_cfg.get("experiment_name", "default"),
