@@ -7,7 +7,7 @@ import numpy as np
 
 
 class Rollout:
-    def __init__(self, cfg, env, actor_model, rollout_result: RolloutResult, mode="train"):
+    def __init__(self, cfg, env, actor_model, rollout_result: RolloutResult | None = None, mode="train"):
         self.cfg = cfg
         self.env = env
         self.actor_model = actor_model
@@ -21,7 +21,8 @@ class Rollout:
         if self.auto_reset:
             obs, _ = self.env.reset()
             self.last_obs = self.prepare_observations(obs)
-        self.rollout_result.clear()
+        if self.rollout_result is not None:
+            self.rollout_result.clear()
 
     def prepare_observations(self, obs: dict[str, Any]) -> dict[str, Any]:
         image_tensor = obs["main_images"] if "main_images" in obs else None
@@ -65,27 +66,28 @@ class Rollout:
             terminations = terminations.any(-1) # [num_envs, chunk_steps] -> [num_envs,]
             truncations = truncations.any(-1) # [num_envs, chunk_steps] -> [num_envs,]
 
-            # bootstrap value for truncated rollouts
-            if truncations.any() and self.auto_reset:
-                final_obs = self.prepare_observations(env_info["final_observation"])
-                with torch.no_grad():
-                    _, _info = self.actor_model.predict_action_batch(final_obs, mode=self.mode)
-                    _final_values = _info["prev_values"].detach().cpu().numpy().reshape(-1)
-                final_values = np.zeros_like(_final_values)
-                final_values[truncations] = _final_values[truncations]
-                rewards += self.cfg.algorithm.gamma * final_values
+            if self.rollout_result is not None:
+                # bootstrap value for truncated rollouts
+                if truncations.any() and self.auto_reset:
+                    final_obs = self.prepare_observations(env_info["final_observation"])
+                    with torch.no_grad():
+                        _, _info = self.actor_model.predict_action_batch(final_obs, mode=self.mode)
+                        _final_values = _info["prev_values"].detach().cpu().numpy().reshape(-1)
+                    final_values = np.zeros_like(_final_values)
+                    final_values[truncations] = _final_values[truncations]
+                    rewards += self.cfg.algorithm.gamma * final_values
 
-            self.rollout_result.append_step(
-                obs=obs,
-                next_obs=next_obs,
-                actions=actions,
-                rewards=rewards,
-                terminations=terminations,
-                truncations=truncations,
-                prev_logprobs=info["prev_logprobs"],
-                prev_values=info["prev_values"],
-                forward_inputs=info["forward_inputs"],
-            )
+                self.rollout_result.append_step(
+                    obs=obs,
+                    next_obs=next_obs,
+                    actions=actions,
+                    rewards=rewards,
+                    terminations=terminations,
+                    truncations=truncations,
+                    prev_logprobs=info["prev_logprobs"],
+                    prev_values=info["prev_values"],
+                    forward_inputs=info["forward_inputs"],
+                )
             obs = next_obs.copy()
 
         # When eval + auto_reset, _handle_auto_reset already calls

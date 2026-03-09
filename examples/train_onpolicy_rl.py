@@ -72,9 +72,8 @@ def main(cfg: DictConfig) -> None:
     actor_model = get_model(cfg.model)
     actor_model.to(f"cuda:{rank}")
     train_rollout_result = RolloutResult()
-    eval_rollout_result = RolloutResult()
     train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train")
-    eval_rollout_worker = Rollout(cfg, eval_env, actor_model, eval_rollout_result, mode="eval")
+    eval_rollout_worker = Rollout(cfg, eval_env, actor_model, mode="eval")
 
     runner = OnPolicyRunner(
         cfg=cfg,
