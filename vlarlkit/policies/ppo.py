@@ -136,6 +136,7 @@ class PPOPolicy:
         )
         clip_ratio_high = float(self.algo_cfg.get("clip_ratio_high", 0.2))
         clip_ratio_low = float(self.algo_cfg.get("clip_ratio_low", 0.2))
+        clip_ratio_c = float(self.algo_cfg.get("clip_ratio_c", 0.0))
         value_clip = float(self.algo_cfg.get("value_clip", 0.2))
         huber_delta = float(self.algo_cfg.get("huber_delta", 10.0))
         entropy_bonus = float(self.algo_cfg.get("entropy_bonus", 0.0))
@@ -190,11 +191,17 @@ class PPOPolicy:
                     values = values.squeeze(-1) # (batch_size,)
 
                 ratio = torch.exp(logprobs - mb_prev_logprobs)
-                surr1 = ratio * mb_advantages
-                surr2 = torch.clamp(
+                policy_loss1 = -mb_advantages * ratio
+                policy_loss2 = -mb_advantages * torch.clamp(
                     ratio, 1.0 - clip_ratio_low, 1.0 + clip_ratio_high
-                ) * mb_advantages
-                per_sample_policy_loss = -torch.min(surr1, surr2)
+                )
+                per_sample_policy_loss = torch.max(policy_loss1, policy_loss2)
+
+                if clip_ratio_c > 1.0:
+                    dual_clip_bound = clip_ratio_c * torch.abs(mb_advantages)
+                    per_sample_policy_loss = torch.min(
+                        per_sample_policy_loss, dual_clip_bound
+                    )
 
                 def _value_loss(residual: torch.Tensor) -> torch.Tensor:
                     if huber_delta > 0:
