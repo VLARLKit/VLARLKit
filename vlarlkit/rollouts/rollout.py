@@ -88,8 +88,12 @@ class Rollout:
             )
             obs = next_obs.copy()
 
-        # update reset_state_ids for next epoch rollout
-        self.env.update_reset_state_ids()
+        # When eval + auto_reset, _handle_auto_reset already calls
+        # update_reset_state_ids on every auto-reset. Calling it again
+        # here would waste ordered IDs. In all other cases this is the
+        # only place that rotates task/trial IDs between epochs.
+        if not (self.mode == "eval" and self.auto_reset):
+            self.env.update_reset_state_ids()
 
         # update last_obs for next epoch rollout (if auto_reset is True)
         if self.auto_reset:
