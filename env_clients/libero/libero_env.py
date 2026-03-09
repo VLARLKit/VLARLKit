@@ -46,10 +46,12 @@ from env_clients.utils import (
 
 
 class LiberoEnv(gym.Env):
-    def __init__(self, cfg, num_envs, rank: int = 0):
+    def __init__(self, cfg, num_envs, total_num_processes, rank: int = 0):
         self.cfg = cfg
+        self.rank = rank
         self.seed = self.cfg.seed + rank
         self.num_envs = num_envs
+        self.total_num_processes = total_num_processes
         self.group_size = self.cfg.group_size
         self.num_group = self.num_envs // self.group_size
         self.specific_reset_id = cfg.get("specific_reset_id", None)
@@ -158,7 +160,12 @@ class LiberoEnv(gym.Env):
 
     def get_reset_state_ids_all(self):
         reset_state_ids = np.arange(self.total_num_group_envs)
+        valid_size = len(reset_state_ids) - (
+            len(reset_state_ids) % self.total_num_processes
+        )
         self._generator_ordered.shuffle(reset_state_ids)
+        reset_state_ids = reset_state_ids[:valid_size]
+        reset_state_ids = reset_state_ids.reshape(self.total_num_processes, -1)
         return reset_state_ids
 
     def _get_ordered_reset_state_ids(self, num_reset_states):
@@ -167,10 +174,10 @@ class LiberoEnv(gym.Env):
                 (self.num_group,), dtype=int
             )
         else:
-            if self.start_idx + num_reset_states > len(self.reset_state_ids_all):
+            if self.start_idx + num_reset_states > len(self.reset_state_ids_all[0]):
                 self.reset_state_ids_all = self.get_reset_state_ids_all()
                 self.start_idx = 0
-            reset_state_ids = self.reset_state_ids_all[
+            reset_state_ids = self.reset_state_ids_all[self.rank][
                 self.start_idx : self.start_idx + num_reset_states
             ]
             self.start_idx = self.start_idx + num_reset_states
