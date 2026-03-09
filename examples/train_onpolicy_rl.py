@@ -34,7 +34,6 @@ def main(cfg: DictConfig) -> None:
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
     rank = dist.get_rank()
-    world_size = dist.get_world_size()
 
     # Initialize wandb-logger on rank 0 only
     if not cfg.runner.is_debug and rank == 0:
@@ -66,8 +65,8 @@ def main(cfg: DictConfig) -> None:
     policy = PPOPolicy(cfg, model, rank)
 
     # Initialize envs
-    train_env = get_env(cfg, "train", world_size, rank)
-    eval_env = get_env(cfg, "eval", world_size, rank)
+    train_env = get_env(cfg, "train", rank)
+    eval_env = get_env(cfg, "eval", rank)
 
     # Initialize rollout workers
     actor_model = get_model(cfg.model)
