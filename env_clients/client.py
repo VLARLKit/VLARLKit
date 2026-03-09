@@ -119,7 +119,7 @@ def create_envs(cfg, rank: int, world_size: int) -> dict:
             f"total_num_envs ({total_num_envs}) must be >= world_size ({world_size})"
         )
         logger.info("Creating %s env: %s with %d envs (rank %d)", mode, env_type, num_envs, rank)
-        envs[mode] = EnvClass(env_cfg, num_envs=num_envs, total_num_processes=total_num_envs, rank=rank)
+        envs[mode] = EnvClass(env_cfg, num_envs=num_envs, total_num_processes=world_size, rank=rank)
         logger.info("Created %s env successfully.", mode)
 
     return envs
