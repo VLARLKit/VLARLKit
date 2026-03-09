@@ -17,7 +17,7 @@ from vlarlkit.rollouts import Rollout
 from vlarlkit.runners import OnPolicyRunner
 
 
-def get_env(cfg: DictConfig, mode: str, world_size: int, rank: int):
+def get_env(cfg: DictConfig, mode: str, rank: int):
     """Connect to the remote env client for this rank."""
     host = cfg.env.get("env_client_host", "localhost")
     base_port = int(cfg.env.get("env_client_base_port", 5550))
