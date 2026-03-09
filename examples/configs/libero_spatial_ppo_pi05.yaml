@@ -12,7 +12,7 @@ algorithm:
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1
   reward_coef: 1.0
-  rollout_epochs: 32
+  rollout_epochs: 16
   eval_rollout_epochs: 8  # used when runner.eval_interval > 0
 
   update_epochs: 1
@@ -52,7 +52,7 @@ env:
   env_client_base_port: 5550
   train:
     seed: ${runner.seed}
-    total_num_envs: 16
+    total_num_envs: 32
     auto_reset: False
     ignore_terminations: False
     max_episode_steps: 240 # max episode steps for truncation
@@ -113,7 +113,7 @@ training:
 
 runner:
   seed: 0
-  max_epochs: 25
+  max_epochs: 50
   eval_interval: 1
   is_debug: False # if True, it will not generate any log files
   logger:
