@@ -13,7 +13,7 @@ algorithm:
   group_size: 1
   reward_coef: 1.0
   rollout_epochs: 16
-  eval_rollout_epochs: 8  # used when runner.eval_interval > 0
+  eval_rollout_epochs: 25  # used when runner.eval_interval > 0
 
   update_epochs: 1
   minibatch_size: 512
@@ -60,7 +60,7 @@ env:
     reward_coef: ${algorithm.reward_coef}
   eval:
     seed: ${runner.seed}
-    total_num_envs: 8
+    total_num_envs: 20
     auto_reset: True
     ignore_terminations: True
     max_episode_steps: 240
@@ -114,7 +114,7 @@ training:
 runner:
   seed: 0
   max_epochs: 50
-  eval_interval: 1
+  eval_interval: 4
   is_debug: False # if True, it will not generate any log files
   logger:
     project: "VLARLKit"
