@@ -65,8 +65,13 @@ class OnPolicyRunner:
             rollout_start_time = time.time()
             rr = self.train_rollout_worker.rollout_result
             self.train_rollout_worker.init_rollout()
-            self.train_rollout_worker.run_rollout(self.cfg.algorithm.rollout_epochs)
+            rollout_infos = self.train_rollout_worker.run_rollout(self.cfg.algorithm.rollout_epochs)
             rollout_end_time = time.time()
+
+            rollout_stats = allreduce_mean_std({
+                "success_rate": rollout_infos["success_once"].astype(float),
+            }, self.device)
+
             if self.rank == 0:
                 logger.info("Collected training data in %.2fs", rollout_end_time - rollout_start_time)
 
@@ -86,24 +91,33 @@ class OnPolicyRunner:
 
             # update
             batch = rr.get_batch(compute_loss_masks=compute_loss_masks, episode_len=episode_len)
+
+            batch_stats = allreduce_mean({
+                "adv_mean": batch["advantages"].mean().item(),
+                "returns_mean": batch["returns"].mean().item(),
+            }, self.device)
+
             update_start_time = time.time()
-            metrics = self.policy.run_update(batch)
+            train_metrics = self.policy.run_update(batch)
             update_end_time = time.time()
 
-            metrics = allreduce_mean(metrics, self.device)
+            train_metrics = allreduce_mean(train_metrics, self.device)
 
             epoch_log: dict[str, float] = {}
 
             if self.rank == 0:
                 logger.info("Updated policy in %.2fs", update_end_time - update_start_time)
                 train_metrics_str = ", ".join(
-                    f"{k}={v:.4f}" for k, v in metrics.items()
+                    f"{k}={v:.4f}" for k, v in train_metrics.items()
                 )
                 logger.info("Epoch %d/%d - Train: %s", epoch, max_epochs, train_metrics_str)
-                epoch_log.update({f"train/{k}": v for k, v in metrics.items()})
+                epoch_log.update({f"rollout/{k}": v for k, v in batch_stats.items()})
+                epoch_log["rollout/success_rate"] = rollout_stats["success_rate"][0]
+                epoch_log.update({f"train/{k}": v for k, v in train_metrics.items()})
 
             sync_fsdp_to_model(self.policy.get_model(), self.train_rollout_worker.actor_model)
 
+            # eval
             if (
                 eval_interval > 0
                 and ((epoch + 1) % eval_interval == 0 or epoch == 0)
