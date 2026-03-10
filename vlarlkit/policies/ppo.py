@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import torch
 import torch.distributed as dist
@@ -134,6 +135,9 @@ class PPOPolicy:
         minibatch_size = max(
             1, int(self.algo_cfg.get("minibatch_size")) // dist.get_world_size()
         )
+        gradient_accumulation_steps = int(
+            self.algo_cfg.get("gradient_accumulation_steps", 1)
+        )
         clip_ratio_high = float(self.algo_cfg.get("clip_ratio_high", 0.2))
         clip_ratio_low = float(self.algo_cfg.get("clip_ratio_low", 0.2))
         clip_ratio_c = float(self.algo_cfg.get("clip_ratio_c", 0.0))
@@ -160,10 +164,14 @@ class PPOPolicy:
         total_policy_loss = 0.0
         total_value_loss = 0.0
         total_entropy = 0.0
-        num_updates = 0
+        total_value_mean = 0.0
+        num_minibatches = 0
 
         for _ in range(update_epochs):
             perm = torch.randperm(N)
+            self.optimizer.zero_grad()
+            accum_step = 0
+
             for start in range(0, N, minibatch_size):
                 end = min(start + minibatch_size, N)
                 mb_inds = perm[start:end]
@@ -232,36 +240,47 @@ class PPOPolicy:
                     policy_loss = (per_sample_policy_loss * mb_mask).sum() / mask_sum
                     value_loss = (per_sample_value_loss * mb_mask).sum() / mask_sum
                     entropy_val = (per_sample_entropy * mb_mask).sum() / mask_sum
+                    value_mean = (values.detach() * mb_mask).sum() / mask_sum
                 else:
                     policy_loss = per_sample_policy_loss.mean()
                     value_loss = per_sample_value_loss.mean()
                     entropy_val = per_sample_entropy.mean()
+                    value_mean = values.detach().mean()
 
                 loss = policy_loss + value_loss
                 if entropy_bonus != 0:
                     loss = loss - entropy_bonus * entropy_val
 
-                self.optimizer.zero_grad()
-                loss.backward()
-                if self.clip_grad > 0:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.clip_grad
-                    )
-                self.optimizer.step()
+                accum_step += 1
+                should_sync = (accum_step == gradient_accumulation_steps) or (end >= N)
+                sync_context = contextlib.nullcontext() if should_sync else self.model.no_sync()
+                with sync_context:
+                    (loss / gradient_accumulation_steps).backward()
+
+                if should_sync:
+                    if self.clip_grad > 0:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.clip_grad
+                        )
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    accum_step = 0
 
                 total_policy_loss += policy_loss.detach().item()
                 total_value_loss += value_loss.detach().item()
                 total_entropy += entropy_val.detach().item()
-                num_updates += 1
+                total_value_mean += value_mean.item()
+                num_minibatches += 1
 
         if self._lr_scheduler is not None:
             self._lr_scheduler.step()
         self._global_step += 1
         self.set_global_step(self._global_step)
 
-        n = max(1, num_updates)
+        n = max(1, num_minibatches)
         return {
             "policy_loss": total_policy_loss / n,
             "value_loss": total_value_loss / n,
             "entropy": total_entropy / n,
+            "value_mean": total_value_mean / n,
         }

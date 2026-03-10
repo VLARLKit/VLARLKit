@@ -16,7 +16,8 @@ algorithm:
   eval_rollout_epochs: 25  # used when runner.eval_interval > 0
 
   update_epochs: 1
-  minibatch_size: 512
+  minibatch_size: 512 # mini-batch size with all ranks combined
+  gradient_accumulation_steps: 4 # total mini-batch size = minibatch_size * gradient_accumulation_steps
   adv_type: gae
   loss_type: actor_critic
   kl_beta: 0.0
