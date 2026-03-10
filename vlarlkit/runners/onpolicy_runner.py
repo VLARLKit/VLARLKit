@@ -60,7 +60,7 @@ class OnPolicyRunner:
 
         start_time = time.time()
 
-        for epoch in range(max_epochs):
+        for epoch in range(1, max_epochs + 1):
             # rollout
             rollout_start_time = time.time()
             rr = self.train_rollout_worker.rollout_result
@@ -120,7 +120,7 @@ class OnPolicyRunner:
             # eval
             if (
                 eval_interval > 0
-                and ((epoch + 1) % eval_interval == 0 or epoch == 0)
+                and (epoch % eval_interval == 0 or epoch == 1 or epoch == max_epochs)
             ):
                 eval_metrics = self._run_evaluate(epoch)
                 if self.rank == 0 and eval_metrics:
