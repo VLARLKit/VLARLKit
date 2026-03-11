@@ -11,6 +11,7 @@ class Rollout:
         self.cfg = cfg
         self.env = env
         self.actor_model = actor_model
+        self.actor_model.eval()
         self.rollout_result = rollout_result
         self.mode = mode
         self.auto_reset = self.cfg.env[self.mode].auto_reset
