@@ -174,7 +174,13 @@ def sync_fsdp_to_model(
         if state and any(k.startswith(prefix) for k in state):
             state = {k[len(prefix):]: v for k, v in state.items() if k.startswith(prefix)}
             break
-    target_model.load_state_dict(state, strict=False)
+    result = target_model.load_state_dict(state, strict=False)
+    if result.missing_keys or result.unexpected_keys:
+        logger.warning(
+            "sync_fsdp_to_model: missing_keys=%s, unexpected_keys=%s",
+            result.missing_keys,
+            result.unexpected_keys,
+        )
 
 
 def allreduce_mean_std(
