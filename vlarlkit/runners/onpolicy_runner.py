@@ -51,9 +51,18 @@ class OnPolicyRunner:
             not train_env_cfg.auto_reset and
             not train_env_cfg.ignore_terminations
         )
-        episode_len = (
-            int(train_env_cfg.max_steps_per_rollout) // int(self.cfg.model.num_action_chunks)
-        )
+        max_steps = int(train_env_cfg.max_steps_per_rollout)
+        num_action_chunks = int(self.cfg.model.num_action_chunks)
+        episode_len = max_steps // num_action_chunks
+
+        if not train_env_cfg.auto_reset:
+            max_ep = int(train_env_cfg.max_episode_steps)
+            assert max_steps == max_ep, (
+                f"max_steps_per_rollout ({max_steps}) != max_episode_steps ({max_ep})"
+            )
+            assert max_steps % num_action_chunks == 0, (
+                f"max_steps_per_rollout ({max_steps}) % num_action_chunks ({num_action_chunks}) != 0"
+            )
 
         if self.rank == 0:
             logger.info("Starting training for %d epochs", max_epochs)
