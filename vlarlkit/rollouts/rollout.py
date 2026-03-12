@@ -20,41 +20,20 @@ class Rollout:
 
     def init_rollout(self) -> None:
         if self.auto_reset:
-            obs, _ = self.env.reset()
-            self.last_obs = self.prepare_observations(obs)
+            self.last_obs, _ = self.env.reset()
         if self.rollout_result is not None:
             self.rollout_result.clear()
-
-    def prepare_observations(self, obs: dict[str, Any]) -> dict[str, Any]:
-        image_tensor = obs["main_images"] if "main_images" in obs else None
-        wrist_image_tensor = obs["wrist_images"] if "wrist_images" in obs else None
-        extra_view_image_tensor = (
-            obs["extra_view_images"] if "extra_view_images" in obs else None
-        )
-        states = obs["states"] if "states" in obs else None
-        task_descriptions = (
-            list(obs["task_descriptions"]) if "task_descriptions" in obs else None
-        )
-
-        return {
-            "main_images": image_tensor,  # [N_ENV, H, W, C]
-            "wrist_images": wrist_image_tensor,  # [N_ENV, H, W, C] or [N_ENV, N_IMG, H, W, C]
-            "extra_view_images": extra_view_image_tensor,  # [N_ENV, N_IMG, H, W, C]
-            "states": states,
-            "task_descriptions": task_descriptions,
-        }
 
     def rollout_one_epoch(self):
         num_chunk_steps = (
             self.cfg.env[self.mode].max_steps_per_rollout
             // self.cfg.model.num_action_chunks
         )
-        
+
         # If auto_reset is False, it will reset the environment at the beginning of each epoch
         # If auto_reset is True, it will consume from last_obs in last epoch
         if not self.auto_reset:
             obs, _ = self.env.reset()
-            obs = self.prepare_observations(obs)
         else:
             obs = self.last_obs
 
@@ -62,25 +41,29 @@ class Rollout:
             with torch.no_grad():
                 actions, info = self.actor_model.predict_action_batch(obs, mode=self.mode)
             next_obs, rewards, terminations, truncations, env_info = self.env.chunk_step(actions)
-            next_obs = self.prepare_observations(next_obs)
             rewards = rewards.sum(-1) # [num_envs, chunk_steps] -> [num_envs,]
             terminations = terminations.any(-1) # [num_envs, chunk_steps] -> [num_envs,]
             truncations = truncations.any(-1) # [num_envs, chunk_steps] -> [num_envs,]
 
-            if self.rollout_result is not None:
-                # bootstrap value for truncated rollouts
-                if truncations.any() and self.auto_reset:
-                    final_obs = self.prepare_observations(env_info["final_observation"])
-                    with torch.no_grad():
-                        _, _info = self.actor_model.predict_action_batch(final_obs, mode=self.mode)
-                        _final_values = _info["prev_values"].detach().cpu().numpy().reshape(-1)
-                    final_values = np.zeros_like(_final_values)
-                    final_values[truncations] = _final_values[truncations]
-                    rewards += self.cfg.algorithm.gamma * final_values
+            # Fix next_obs for done envs under auto_reset: use final_observation
+            # (the true terminal obs) instead of the reset obs from the new episode.
+            dones = np.logical_or(terminations, truncations)
+            if dones.any() and self.auto_reset and "final_observation" in env_info:
+                final_obs = env_info["final_observation"]
+                next_obs_for_buffer = {
+                    k: (v.copy() if isinstance(v, np.ndarray) else v)
+                    for k, v in next_obs.items()
+                }
+                for k in next_obs_for_buffer:
+                    if isinstance(next_obs_for_buffer[k], np.ndarray):
+                        next_obs_for_buffer[k][dones] = final_obs[k][dones]
+            else:
+                next_obs_for_buffer = next_obs
 
+            if self.rollout_result is not None:
                 self.rollout_result.append_step(
                     obs=obs,
-                    next_obs=next_obs,
+                    next_obs=next_obs_for_buffer,
                     actions=actions,
                     rewards=rewards,
                     terminations=terminations,

@@ -89,6 +89,23 @@ class RemoteEnv:
         msg = {"env_mode": self.env_mode, "method": "get_attr", "kwargs": {"name": name}}
         return self._send_and_recv(msg)
 
+    # ---- Observation helpers ----
+
+    @staticmethod
+    def prepare_observations(obs: dict) -> dict:
+        """Normalize raw env obs into a canonical dict with known keys."""
+        return {
+            "main_images": obs.get("main_images"),
+            "wrist_images": obs.get("wrist_images"),
+            "extra_view_images": obs.get("extra_view_images"),
+            "states": obs.get("states"),
+            "task_descriptions": (
+                list(obs["task_descriptions"])
+                if "task_descriptions" in obs
+                else None
+            ),
+        }
+
     # ---- Environment interface (matches LiberoEnv) ----
 
     def reset(
@@ -101,13 +118,30 @@ class RemoteEnv:
             kwargs["env_idx"] = env_idx
         if reset_state_ids is not None:
             kwargs["reset_state_ids"] = reset_state_ids
-        return self._call("reset", **kwargs)
+        obs, info = self._call("reset", **kwargs)
+        return self.prepare_observations(obs), info
 
     def step(self, actions=None, auto_reset=True):
-        return self._call("step", actions=actions, auto_reset=auto_reset)
+        obs, reward, terminations, truncations, infos = self._call(
+            "step", actions=actions, auto_reset=auto_reset
+        )
+        obs = self.prepare_observations(obs)
+        if "final_observation" in infos:
+            infos["final_observation"] = self.prepare_observations(
+                infos["final_observation"]
+            )
+        return obs, reward, terminations, truncations, infos
 
     def chunk_step(self, chunk_actions):
-        return self._call("chunk_step", chunk_actions=chunk_actions)
+        next_obs, rewards, terminations, truncations, env_info = self._call(
+            "chunk_step", chunk_actions=chunk_actions
+        )
+        next_obs = self.prepare_observations(next_obs)
+        if "final_observation" in env_info:
+            env_info["final_observation"] = self.prepare_observations(
+                env_info["final_observation"]
+            )
+        return next_obs, rewards, terminations, truncations, env_info
 
     def update_reset_state_ids(self):
         return self._call("update_reset_state_ids")
