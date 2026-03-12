@@ -126,6 +126,45 @@ class RolloutResult:
         """Normalize advantages in-place with the given global mean and std."""
         self.advantages = (self.advantages - mean) / std
 
+    def get_transitions(self) -> dict[str, np.ndarray]:
+        """Pack current rollout data into a flat dict for off-policy use.
+
+        Flattens (T, n_envs, ...) into (T*n_envs, ...) and converts nested
+        obs/next_obs dicts into flat keys like "obs/main_images".
+
+        Returns:
+            A dict with flat keys and flattened numpy arrays, each (N, ...).
+        """
+        result: dict[str, np.ndarray] = {}
+
+        # Flatten obs/next_obs nested dicts into "prefix/key" flat keys
+        for prefix in ("obs", "next_obs"):
+            data_list = getattr(self, prefix)
+            if not data_list:
+                continue
+            for k in data_list[0].keys():
+                vals = [d[k] for d in data_list]
+                if isinstance(vals[0], np.ndarray):
+                    stacked = np.stack(vals)  # (T, n_envs, ...)
+                    result[f"{prefix}/{k}"] = stacked.reshape(
+                        -1, *stacked.shape[2:]
+                    )
+
+        # Flatten scalar fields
+        for name in ("actions", "rewards", "terminations", "truncations"):
+            data_list = getattr(self, name)
+            if data_list:
+                stacked = np.stack(data_list)  # (T, n_envs, ...)
+                result[name] = stacked.reshape(-1, *stacked.shape[2:])
+
+        # Compute dones
+        if "terminations" in result and "truncations" in result:
+            result["dones"] = np.logical_or(
+                result["terminations"], result["truncations"]
+            )
+
+        return result
+
     def get_batch(
         self,
         compute_loss_masks: bool = False,
