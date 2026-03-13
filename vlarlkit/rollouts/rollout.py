@@ -14,13 +14,13 @@ class Rollout:
         self.actor_model.eval()
         self.rollout_result = rollout_result
         self.mode = mode
-        self.auto_reset = self.cfg.env[self.mode].auto_reset
+        self._auto_reset = self.cfg.env[self.mode].auto_reset
 
         self.init_rollout()
 
     def init_rollout(self) -> None:
-        if self.auto_reset:
-            self.last_obs, _ = self.env.reset()
+        if self._auto_reset:
+            self._last_obs, _ = self.env.reset()
         if self.rollout_result is not None:
             self.rollout_result.clear()
 
@@ -32,10 +32,10 @@ class Rollout:
 
         # If auto_reset is False, it will reset the environment at the beginning of each epoch
         # If auto_reset is True, it will consume from last_obs in last epoch
-        if not self.auto_reset:
+        if not self._auto_reset:
             obs, _ = self.env.reset()
         else:
-            obs = self.last_obs
+            obs = self._last_obs
 
         for _ in range(num_chunk_steps):
             with torch.no_grad():
@@ -48,7 +48,7 @@ class Rollout:
             # Fix next_obs for done envs under auto_reset: use final_observation
             # (the true terminal obs) instead of the reset obs from the new episode.
             dones = np.logical_or(terminations, truncations)
-            if dones.any() and self.auto_reset and "final_observation" in env_info:
+            if dones.any() and self._auto_reset and "final_observation" in env_info:
                 final_obs = env_info["final_observation"]
                 next_obs_for_buffer = {
                     k: (v.copy() if isinstance(v, np.ndarray) else v)
@@ -78,12 +78,12 @@ class Rollout:
         # update_reset_state_ids on every auto-reset. Calling it again
         # here would waste ordered IDs. In all other cases this is the
         # only place that rotates task/trial IDs between epochs.
-        if not (self.mode == "eval" and self.auto_reset):
+        if not (self.mode == "eval" and self._auto_reset):
             self.env.update_reset_state_ids()
 
         # update last_obs for next epoch rollout (if auto_reset is True)
-        if self.auto_reset:
-            self.last_obs = obs
+        if self._auto_reset:
+            self._last_obs = obs
 
         # return the episode info
         if "final_info" in env_info:

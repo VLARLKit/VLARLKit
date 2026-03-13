@@ -24,7 +24,7 @@ class OffPolicyRunner:
     Key design choices:
     - Lock-free weight sync: sync_fsdp_to_model writes actor_model directly
       while rollout thread reads it. Off-policy tolerates stale weights.
-    - data_queue (queue.Queue) is inherently thread-safe.
+    - _data_queue (queue.Queue) is inherently thread-safe.
     - replay_buffer is only accessed from the main thread.
     """
 
@@ -49,8 +49,8 @@ class OffPolicyRunner:
         self.device = torch.device(f"cuda:{self.rank}")
 
         queue_size = int(cfg.algorithm.get("queue_size", 4))
-        self.data_queue: queue.Queue = queue.Queue(maxsize=queue_size)
-        self.should_stop = threading.Event()
+        self._data_queue: queue.Queue = queue.Queue(maxsize=queue_size)
+        self._should_stop = threading.Event()
 
     # ------------------------------------------------------------------
     # Thread-safe queue helpers (interruptible by should_stop)
@@ -58,18 +58,18 @@ class OffPolicyRunner:
 
     def _queue_get(self, timeout: float = 1.0) -> dict | None:
         """Blocking get that exits cleanly when should_stop is set."""
-        while not self.should_stop.is_set():
+        while not self._should_stop.is_set():
             try:
-                return self.data_queue.get(timeout=timeout)
+                return self._data_queue.get(timeout=timeout)
             except queue.Empty:
                 continue
         return None
 
     def _queue_put(self, data: dict, timeout: float = 1.0) -> None:
         """Blocking put that exits cleanly when should_stop is set."""
-        while not self.should_stop.is_set():
+        while not self._should_stop.is_set():
             try:
-                self.data_queue.put(data, timeout=timeout)
+                self._data_queue.put(data, timeout=timeout)
                 return
             except queue.Full:
                 continue
@@ -82,7 +82,7 @@ class OffPolicyRunner:
         """Daemon thread: continuously collects rollouts and enqueues transitions."""
         try:
             self.train_rollout_worker.init_rollout()
-            while not self.should_stop.is_set():
+            while not self._should_stop.is_set():
                 rollout_info = self.train_rollout_worker.rollout_one_epoch()
                 rr = self.train_rollout_worker.rollout_result
                 transitions = rr.get_transitions()
@@ -91,7 +91,7 @@ class OffPolicyRunner:
                 self._queue_put(transitions)
         except Exception:
             logger.exception("Rollout thread crashed")
-            self.should_stop.set()
+            self._should_stop.set()
 
     # ------------------------------------------------------------------
     # Main loop
@@ -119,7 +119,7 @@ class OffPolicyRunner:
         start_time = time.time()
         update_step = 0
 
-        while not self.should_stop.is_set() and update_step < max_update_steps:
+        while not self._should_stop.is_set() and update_step < max_update_steps:
             # Wait for a chunk of data from rollout thread
             data = self._queue_get()
             if data is None:
@@ -193,7 +193,7 @@ class OffPolicyRunner:
             dist.barrier()
 
         # Shutdown
-        self.should_stop.set()
+        self._should_stop.set()
         rollout_thread.join(timeout=10)
 
         total_time = time.time() - start_time

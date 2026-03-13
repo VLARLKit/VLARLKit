@@ -20,8 +20,8 @@ class PPOPolicy:
 
     def __init__(self, cfg: DictConfig, model: BaseModel, rank: int) -> None:
         self.cfg = cfg
-        self.algo_cfg = cfg.algorithm
-        self.optim_cfg = cfg.training.optim
+        self._algo_cfg = cfg.algorithm
+        self._optim_cfg = cfg.training.optim
         self.rank = rank
         self.device = torch.device(f"cuda:{self.rank}")
         self.fsdp_cfg = getattr(cfg.training, "fsdp_config", None) or {}
@@ -31,16 +31,16 @@ class PPOPolicy:
         self._setup_optimizer()
         self._setup_lr_scheduler()
 
-        self.clip_grad = float(self.optim_cfg.get("clip_grad", 0.0))
+        self._clip_grad = float(self._optim_cfg.get("clip_grad", 0.0))
         self._global_step = 0
 
     def _setup_optimizer(self) -> None:
-        value_lr = float(self.optim_cfg.get("value_lr"))
-        lr = float(self.optim_cfg.get("lr"))
-        beta1 = float(self.optim_cfg.get("adam_beta1", 0.9))
-        beta2 = float(self.optim_cfg.get("adam_beta2", 0.999))
-        eps = float(self.optim_cfg.get("adam_eps", 1e-8))
-        weight_decay = float(self.optim_cfg.get("weight_decay", 0.0))
+        value_lr = float(self._optim_cfg.get("value_lr"))
+        lr = float(self._optim_cfg.get("lr"))
+        beta1 = float(self._optim_cfg.get("adam_beta1", 0.9))
+        beta2 = float(self._optim_cfg.get("adam_beta2", 0.999))
+        eps = float(self._optim_cfg.get("adam_eps", 1e-8))
+        weight_decay = float(self._optim_cfg.get("weight_decay", 0.0))
 
         if value_lr is not None:
             value_lr = float(value_lr)
@@ -59,12 +59,12 @@ class PPOPolicy:
                     {"params": other_params, "lr": lr},
                     {"params": value_params, "lr": value_lr},
                 ]
-                self.optimizer = torch.optim.AdamW(
+                self._optimizer = torch.optim.AdamW(
                     param_groups, betas=(beta1, beta2), eps=eps, weight_decay=weight_decay
                 )
             else:
                 params = [p for p in self.model.parameters() if p.requires_grad]
-                self.optimizer = torch.optim.AdamW(
+                self._optimizer = torch.optim.AdamW(
                     params,
                     lr=lr,
                     betas=(beta1, beta2),
@@ -73,7 +73,7 @@ class PPOPolicy:
                 )
         else:
             params = [p for p in self.model.parameters() if p.requires_grad]
-            self.optimizer = torch.optim.AdamW(
+            self._optimizer = torch.optim.AdamW(
                 params,
                 lr=lr,
                 betas=(beta1, beta2),
@@ -81,14 +81,14 @@ class PPOPolicy:
                 weight_decay=weight_decay,
             )
 
-        n_optim = sum(p.numel() for group in self.optimizer.param_groups for p in group["params"])
+        n_optim = sum(p.numel() for group in self._optimizer.param_groups for p in group["params"])
         if self.rank == 0:
             logger.info(f"Optimizable params: {n_optim:,}")
 
     def _setup_lr_scheduler(self) -> None:
-        sched_type = self.optim_cfg.get("lr_scheduler", "constant")
-        total_steps = int(self.optim_cfg.get("total_training_steps", 100000))
-        min_lr_rate = float(self.optim_cfg.get("min_lr_rate", 0.1))
+        sched_type = self._optim_cfg.get("lr_scheduler", "constant")
+        total_steps = int(self._optim_cfg.get("total_training_steps", 100000))
+        min_lr_rate = float(self._optim_cfg.get("min_lr_rate", 0.1))
         if sched_type == "cosine":
             def lr_lambda(step: int) -> float:
                 if step >= total_steps:
@@ -96,11 +96,11 @@ class PPOPolicy:
                 import math
                 return min_lr_rate + 0.5 * (1 - min_lr_rate) * (1 + math.cos(step / total_steps * math.pi))
             self._lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-                self.optimizer, lr_lambda
+                self._optimizer, lr_lambda
             )
         elif sched_type == "constant":
             self._lr_scheduler = torch.optim.lr_scheduler.LambdaLR(
-                self.optimizer, lr_lambda=lambda step: 1.0
+                self._optimizer, lr_lambda=lambda step: 1.0
             )
         else:
             raise ValueError(f"Invalid learning rate scheduler type: {sched_type}")
@@ -131,19 +131,19 @@ class PPOPolicy:
     def run_update(self, batch: dict[str, Any]) -> dict[str, float]:
         self.model.train()
 
-        update_epochs = int(self.algo_cfg.get("update_epochs"))
+        update_epochs = int(self._algo_cfg.get("update_epochs"))
         minibatch_size = max(
-            1, int(self.algo_cfg.get("minibatch_size")) // dist.get_world_size()
+            1, int(self._algo_cfg.get("minibatch_size")) // dist.get_world_size()
         )
         gradient_accumulation_steps = int(
-            self.algo_cfg.get("gradient_accumulation_steps", 1)
+            self._algo_cfg.get("gradient_accumulation_steps", 1)
         )
-        clip_ratio_high = float(self.algo_cfg.get("clip_ratio_high", 0.2))
-        clip_ratio_low = float(self.algo_cfg.get("clip_ratio_low", 0.2))
-        clip_ratio_c = float(self.algo_cfg.get("clip_ratio_c", 0.0))
-        value_clip = float(self.algo_cfg.get("value_clip", 0.2))
-        huber_delta = float(self.algo_cfg.get("huber_delta", 10.0))
-        entropy_bonus = float(self.algo_cfg.get("entropy_bonus", 0.0))
+        clip_ratio_high = float(self._algo_cfg.get("clip_ratio_high", 0.2))
+        clip_ratio_low = float(self._algo_cfg.get("clip_ratio_low", 0.2))
+        clip_ratio_c = float(self._algo_cfg.get("clip_ratio_c", 0.0))
+        value_clip = float(self._algo_cfg.get("value_clip", 0.2))
+        huber_delta = float(self._algo_cfg.get("huber_delta", 10.0))
+        entropy_bonus = float(self._algo_cfg.get("entropy_bonus", 0.0))
 
         advantages = batch["advantages"] # (batch_size,)
         prev_logprobs = batch["prev_logprobs"] # (batch_size, action_chunk, action_dim)
@@ -169,7 +169,7 @@ class PPOPolicy:
 
         for _ in range(update_epochs):
             perm = torch.randperm(N)
-            self.optimizer.zero_grad()
+            self._optimizer.zero_grad()
             accum_step = 0
 
             for start in range(0, N, minibatch_size):
@@ -258,12 +258,12 @@ class PPOPolicy:
                     (loss / gradient_accumulation_steps).backward()
 
                 if should_sync:
-                    if self.clip_grad > 0:
+                    if self._clip_grad > 0:
                         torch.nn.utils.clip_grad_norm_(
-                            self.model.parameters(), self.clip_grad
+                            self.model.parameters(), self._clip_grad
                         )
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
+                    self._optimizer.step()
+                    self._optimizer.zero_grad()
                     accum_step = 0
 
                 total_policy_loss += policy_loss.detach().item()
