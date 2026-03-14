@@ -157,9 +157,6 @@ def wrap_model_with_fsdp(model: BaseModel, fsdp_cfg: dict, rank: int) -> FSDP:
         # Broadcast rank-0 state to all ranks so randomly-initialized layers
         # (e.g. value_head) start identical everywhere.
         "sync_module_states": True,
-        # Keep original parameter objects so per-parameter optimizer configs
-        # (e.g. separate LR for value_head) work correctly with FSDP.
-        "use_orig_params": True,
     }
 
     mp_cfg = fsdp_cfg.get("mixed_precision")
