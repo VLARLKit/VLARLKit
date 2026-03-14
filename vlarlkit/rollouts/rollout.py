@@ -15,6 +15,7 @@ class Rollout:
         self.rollout_result = rollout_result
         self.mode = mode
         self._auto_reset = self.cfg.env[self.mode].auto_reset
+        self._use_dsrl = bool(self.cfg.model.get("openpi", {}).get("use_dsrl", False))
 
         self.init_rollout()
 
@@ -61,10 +62,17 @@ class Rollout:
                 next_obs_for_buffer = next_obs
 
             if self.rollout_result is not None:
+                # DSRL: store noise_actions (from forward_inputs) instead of real_actions
+                stored_actions = actions
+                if self._use_dsrl and "action" in info.get("forward_inputs", {}):
+                    stored_actions = info["forward_inputs"]["action"]
+                    if hasattr(stored_actions, "detach"):
+                        stored_actions = stored_actions.detach().cpu().numpy()
+
                 self.rollout_result.append_step(
                     obs=obs,
                     next_obs=next_obs_for_buffer,
-                    actions=actions,
+                    actions=stored_actions,
                     rewards=rewards,
                     terminations=terminations,
                     truncations=truncations,

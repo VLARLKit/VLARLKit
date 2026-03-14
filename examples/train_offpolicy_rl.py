@@ -13,7 +13,7 @@ from vlarlkit.data.io_struct import RolloutResult
 from vlarlkit.data.replay_buffer import ReplayBuffer
 from vlarlkit.utils.remote_env import RemoteEnv
 from vlarlkit.models.openpi import get_model
-from vlarlkit.policies import OffPolicyBase
+from vlarlkit.policies import SACPolicy
 from vlarlkit.rollouts import Rollout
 from vlarlkit.runners import OffPolicyRunner
 
@@ -28,7 +28,7 @@ def get_env(cfg: DictConfig, mode: str, rank: int):
 
 @hydra.main(
     config_path="configs",
-    config_name="libero_spatial_ppo_pi05",  # TODO: add off-policy config
+    config_name="libero_spatial_dsrl_pi05",
     version_base=None,
 )
 def main(cfg: DictConfig) -> None:
@@ -58,18 +58,24 @@ def main(cfg: DictConfig) -> None:
     torch.manual_seed(seed + rank)
     torch.cuda.manual_seed_all(seed + rank)
 
-    # Initialize policy (placeholder)
+    # Initialize policy model and target model
     model = get_model(cfg.model)
-    policy = OffPolicyBase(cfg, model, rank)
+    target_model = get_model(cfg.model)
 
-    # Initialize replay buffer (placeholder)
-    replay_buffer = ReplayBuffer()
+    # SACPolicy handles FSDP wrapping internally
+    policy = SACPolicy(cfg, model, target_model, rank)
+
+    # Initialize replay buffer
+    replay_buffer = ReplayBuffer(
+        max_size=int(cfg.algorithm.get("replay_buffer_size", 100000)),
+        seed=seed + rank,
+    )
 
     # Initialize envs
     train_env = get_env(cfg, "train", rank)
     eval_env = get_env(cfg, "eval", rank)
 
-    # Initialize rollout workers
+    # Initialize rollout workers (actor_model is a separate copy for async rollout)
     actor_model = get_model(cfg.model)
     actor_model.to(f"cuda:{rank}")
     train_rollout_result = RolloutResult()

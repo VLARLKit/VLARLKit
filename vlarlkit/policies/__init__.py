@@ -1,4 +1,4 @@
 from vlarlkit.policies.ppo import PPOPolicy
-from vlarlkit.policies.offpolicy_base import OffPolicyBase
+from vlarlkit.policies.sac import SACPolicy
 
-__all__ = ["PPOPolicy", "OffPolicyBase"]
+__all__ = ["PPOPolicy", "SACPolicy"]

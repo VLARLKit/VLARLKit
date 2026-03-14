@@ -259,9 +259,7 @@ class PPOPolicy:
 
                 if should_sync:
                     if self._clip_grad > 0:
-                        torch.nn.utils.clip_grad_norm_(
-                            self.model.parameters(), self._clip_grad
-                        )
+                        self.model.clip_grad_norm_(self._clip_grad)
                     self._optimizer.step()
                     self._optimizer.zero_grad()
                     accum_step = 0
