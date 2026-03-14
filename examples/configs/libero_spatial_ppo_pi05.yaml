@@ -107,6 +107,8 @@ training:
     strategy: "fsdp"
     sharding_strategy: "full_shard"
     gradient_checkpointing: False # for openpi, gradient checkpointing is not supported, please do not change this value
+    forward_prefetch: False
+    backward_prefetch: null # options: null, "pre", "post"
     mixed_precision:
       param_dtype: ${model.precision}
       reduce_dtype: ${model.precision}

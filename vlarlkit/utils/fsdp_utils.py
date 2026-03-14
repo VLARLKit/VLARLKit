@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.distributed as dist
-from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import BackwardPrefetch, FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
 from torch.distributed.fsdp.wrap import (
     _module_wrap_policy,
@@ -96,6 +96,11 @@ SHARDING_STRATEGIES = {
     "hybrid_shard": ShardingStrategy.HYBRID_SHARD,
 }
 
+BACKWARD_PREFETCH_STRATEGIES = {
+    "pre": BackwardPrefetch.BACKWARD_PRE,
+    "post": BackwardPrefetch.BACKWARD_POST,
+}
+
 
 def get_sharding_strategy(name: str) -> ShardingStrategy:
     name = (name or "no_shard").strip().lower()
@@ -149,6 +154,12 @@ def wrap_model_with_fsdp(model: BaseModel, fsdp_cfg: dict, rank: int) -> FSDP:
         "sharding_strategy": sharding_strategy,
         "auto_wrap_policy": wrap_policy,
         "device_id": rank,
+        # Broadcast rank-0 state to all ranks so randomly-initialized layers
+        # (e.g. value_head) start identical everywhere.
+        "sync_module_states": True,
+        # Keep original parameter objects so per-parameter optimizer configs
+        # (e.g. separate LR for value_head) work correctly with FSDP.
+        "use_orig_params": True,
     }
 
     mp_cfg = fsdp_cfg.get("mixed_precision")
@@ -156,6 +167,15 @@ def wrap_model_with_fsdp(model: BaseModel, fsdp_cfg: dict, rank: int) -> FSDP:
         mp = mixed_precision_from_cfg(mp_cfg)
         if mp is not None:
             fsdp_kwargs["mixed_precision"] = mp
+
+    if fsdp_cfg.get("forward_prefetch", False):
+        fsdp_kwargs["forward_prefetch"] = True
+
+    backward_prefetch = fsdp_cfg.get("backward_prefetch")
+    if backward_prefetch:
+        key = str(backward_prefetch).strip().lower()
+        if key in BACKWARD_PREFETCH_STRATEGIES:
+            fsdp_kwargs["backward_prefetch"] = BACKWARD_PREFETCH_STRATEGIES[key]
 
     return FSDP(model, **fsdp_kwargs)
 
