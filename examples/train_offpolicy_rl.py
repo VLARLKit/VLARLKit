@@ -13,7 +13,7 @@ from vlarlkit.data.io_struct import RolloutResult
 from vlarlkit.data.replay_buffer import ReplayBuffer
 from vlarlkit.utils.remote_env import RemoteEnv
 from vlarlkit.models.openpi import get_model
-from vlarlkit.policies import SACPolicy
+from vlarlkit.policies import DSRLPolicy
 from vlarlkit.rollouts import Rollout
 from vlarlkit.runners import OffPolicyRunner
 
@@ -63,7 +63,7 @@ def main(cfg: DictConfig) -> None:
     target_model = get_model(cfg.model)
 
     # SACPolicy handles FSDP wrapping internally
-    policy = SACPolicy(cfg, model, target_model, rank)
+    policy = DSRLPolicy(cfg, model, target_model, rank)
 
     # Initialize replay buffer
     replay_buffer = ReplayBuffer(

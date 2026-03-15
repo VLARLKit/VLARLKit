@@ -101,8 +101,14 @@ class OffPolicyRunner:
         """Main entry point: start rollout thread, then consume data and update."""
         max_update_steps = int(self.cfg.runner.get("max_update_steps", 1000))
         eval_interval = int(self.cfg.runner.get("eval_interval", 0))
-        utd_ratio = float(self.cfg.algorithm.get("utd_ratio", 1.0))
-        batch_size = int(self.cfg.algorithm.get("minibatch_size", 256))
+        update_epoch = int(self.cfg.algorithm.get("update_epoch", 200))
+
+        # Batch size per rank: global_batch_size / world_size, or fallback to minibatch_size
+        global_bs = self.cfg.algorithm.get("global_batch_size", None)
+        if global_bs is not None:
+            batch_size = int(global_bs) // self.world_size
+        else:
+            batch_size = int(self.cfg.algorithm.get("minibatch_size", 256))
 
         # Start rollout thread
         rollout_thread = threading.Thread(
@@ -112,8 +118,8 @@ class OffPolicyRunner:
 
         if self.rank == 0:
             logger.info(
-                "Off-policy training started (max_update_steps=%d, utd=%.1f)",
-                max_update_steps, utd_ratio,
+                "Off-policy training started (max_update_steps=%d, update_epoch=%d, batch_size=%d)",
+                max_update_steps, update_epoch, batch_size,
             )
 
         start_time = time.time()
@@ -125,29 +131,18 @@ class OffPolicyRunner:
             if data is None:
                 break
 
-            rollout_info = data.pop("rollout_info", None)
-
-            # Add to replay buffer
+            rollout_info = data.pop("rollout_info")
             self.replay_buffer.add(data)
+            rollout_stats = allreduce_mean_std({
+                "success_rate": rollout_info["success_once"].astype(float),
+            }, self.device)
 
-            # Compute number of updates for this chunk
-            # N = number of transitions in this chunk (approximated from rewards)
-            n_transitions = len(data.get("rewards", []))
-            num_updates = max(1, int(n_transitions * utd_ratio))
-
-            # Run updates
+            # Run update_epoch gradient updates per data collection
             update_start = time.time()
-            chunk_metrics: dict[str, float] = {}
-            for _ in range(num_updates):
-                if not self.replay_buffer.ready():
-                    break
+            for _ in range(update_epoch):
                 batch = self.replay_buffer.sample(batch_size)
-                metrics = self.policy.run_update(batch)
+                train_metrics = self.policy.run_update(batch)
                 update_step += 1
-
-                # Accumulate metrics (keep last for simplicity)
-                chunk_metrics = metrics
-
                 if update_step >= max_update_steps:
                     break
             update_end = time.time()
@@ -157,38 +152,25 @@ class OffPolicyRunner:
                 self.policy.get_model(), self.train_rollout_worker.actor_model
             )
 
-            # Logging
-            if self.rank == 0 and chunk_metrics:
-                epoch_log: dict[str, float] = {}
-                epoch_log.update({f"train/{k}": v for k, v in chunk_metrics.items()})
-                epoch_log["train/update_step"] = update_step
-                epoch_log["train/update_time"] = update_end - update_start
-                epoch_log["train/replay_buffer_size"] = len(self.replay_buffer)
-
-                if rollout_info is not None:
-                    rollout_stats = allreduce_mean_std({
-                        "success_rate": rollout_info.get("success_once", rollout_info.get("success", [])),
-                    }, self.device)
-                    epoch_log["rollout/success_rate"] = rollout_stats["success_rate"][0]
-
-                metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in chunk_metrics.items())
+            epoch_log: dict[str, float] = {}
+            if self.rank == 0:
+                epoch_log.update({f"train/{k}": v for k, v in train_metrics.items()})
+                epoch_log["rollout/success_rate"] = rollout_stats["success_rate"][0]
+                metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in train_metrics.items())
                 logger.info(
                     "Step %d/%d - %s (%.2fs)",
                     update_step, max_update_steps, metrics_str,
                     update_end - update_start,
                 )
 
-                if self.metric_logger is not None:
-                    self.metric_logger.log(epoch_log, step=update_step)
-
-            # Eval
-            if (
-                eval_interval > 0
-                and update_step % eval_interval == 0
-            ):
+            # Eval (all ranks must participate in allreduce inside _run_evaluate)
+            if eval_interval > 0 and update_step % eval_interval == 0:
                 eval_metrics = self._run_evaluate(update_step)
-                if self.rank == 0 and eval_metrics and self.metric_logger is not None:
-                    self.metric_logger.log(eval_metrics, step=update_step)
+                if self.rank == 0 and eval_metrics is not None:
+                    epoch_log.update(eval_metrics)
+
+            if self.rank == 0 and self.metric_logger is not None:
+                self.metric_logger.log(epoch_log, step=update_step)
 
             dist.barrier()
 
