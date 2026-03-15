@@ -105,7 +105,7 @@ training:
   
   fsdp_config:
     strategy: "fsdp"
-    sharding_strategy: "full_shard"
+    sharding_strategy: "no_shard"
     gradient_checkpointing: False # for openpi, gradient checkpointing is not supported, please do not change this value
     forward_prefetch: False
     backward_prefetch: null # options: null, "pre", "post"
