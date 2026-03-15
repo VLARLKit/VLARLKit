@@ -12,12 +12,12 @@ algorithm:
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1
   reward_coef: 1.0
-  rollout_epochs: 16
+  rollout_epochs: 8
   eval_rollout_epochs: 25  # used when runner.eval_interval > 0
 
   update_epochs: 1
-  minibatch_size: 512 # mini-batch size with all ranks combined
-  gradient_accumulation_steps: 4 # total mini-batch size = minibatch_size * gradient_accumulation_steps
+  global_mini_batch_size: 2048 # global_mini_bs = (micro_bs * gradient_accumulation_steps) * world_size
+  micro_batch_size: 128 # bs per rank per forward pass
   adv_type: gae
   loss_type: actor_critic
   kl_beta: 0.0
@@ -53,7 +53,7 @@ env:
   env_client_base_port: 5550
   train:
     seed: ${runner.seed}
-    total_num_envs: 32
+    total_num_envs: 64
     auto_reset: False
     ignore_terminations: False
     max_episode_steps: 240 # max episode steps for truncation
@@ -116,8 +116,8 @@ training:
 
 runner:
   seed: 0
-  max_epochs: 50
-  eval_interval: 4
+  max_epochs: 100
+  eval_interval: 5
   is_debug: False # if True, it will not generate any log files
   logger:
     project: "VLARLKit"

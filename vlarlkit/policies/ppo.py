@@ -132,12 +132,13 @@ class PPOPolicy:
         self.model.train()
 
         update_epochs = int(self._algo_cfg.get("update_epochs"))
-        minibatch_size = max(
-            1, int(self._algo_cfg.get("minibatch_size")) // dist.get_world_size()
-        )
-        gradient_accumulation_steps = int(
-            self._algo_cfg.get("gradient_accumulation_steps", 1)
-        )
+        # Derive per-rank mini-batch size and gradient accumulation
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
+        global_mini_bs = self._algo_cfg.get("global_mini_batch_size")
+        micro_bs = self._algo_cfg.get("micro_batch_size")
+        micro_batch_size = int(micro_bs)
+        gradient_accumulation_steps = int(global_mini_bs) // (micro_batch_size * world_size)
+
         clip_ratio_high = float(self._algo_cfg.get("clip_ratio_high", 0.2))
         clip_ratio_low = float(self._algo_cfg.get("clip_ratio_low", 0.2))
         clip_ratio_c = float(self._algo_cfg.get("clip_ratio_c", 0.0))
@@ -173,8 +174,8 @@ class PPOPolicy:
             self._optimizer.zero_grad()
             accum_step = 0
 
-            for start in range(0, N, minibatch_size):
-                end = min(start + minibatch_size, N)
+            for start in range(0, N, micro_batch_size):
+                end = min(start + micro_batch_size, N)
                 mb_inds = perm[start:end]
 
                 mb_advantages = advantages[mb_inds].to(self.device)
