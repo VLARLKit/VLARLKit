@@ -108,8 +108,17 @@ class RolloutResult:
         self.returns = advantages + values
         self.advantages = advantages
 
-    def compute_loss_mask(self, episode_len: int) -> np.ndarray:
-        """Compute a boolean mask that is True before the first termination per env."""
+    def compute_loss_mask(
+        self, episode_len: int
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compute a boolean mask and per-sample loss_mask_ratio.
+
+        Returns:
+            mask: (T*n_envs,) bool — True before the first termination per env.
+            loss_mask_ratio: (T*n_envs,) float32 — valid_steps / episode_len
+                per (episode, env), broadcast to every step. Used to up-weight
+                short (successful) episodes in the loss.
+        """
         terminations = np.stack(self.terminations).astype(np.float32)  # (T, n_envs)
         T, n_envs = terminations.shape
         assert T % episode_len == 0, (
@@ -120,7 +129,14 @@ class RolloutResult:
         cum = np.cumsum(term, axis=1)
         shifted = np.zeros_like(cum)
         shifted[:, 1:] = cum[:, :-1]
-        return (shifted == 0).reshape(-1).astype(bool)
+        mask = (shifted == 0)  # (num_episodes, episode_len, n_envs)
+
+        # valid steps per (episode, env), broadcast back to all steps
+        valid_counts = mask.sum(axis=1, keepdims=True)  # (num_episodes, 1, n_envs)
+        ratio = (valid_counts / episode_len).astype(np.float32)  # (num_episodes, 1, n_envs)
+        ratio = np.broadcast_to(ratio, mask.shape)  # (num_episodes, episode_len, n_envs)
+
+        return mask.reshape(-1).astype(bool), ratio.reshape(-1).copy()
 
     def norm_adv(self, mean: float, std: float) -> None:
         """Normalize advantages in-place with the given global mean and std."""
@@ -217,9 +233,9 @@ class RolloutResult:
             }
 
         if compute_loss_masks:
-            batch["loss_mask"] = torch.from_numpy(
-                self.compute_loss_mask(episode_len=episode_len).astype(np.float32)
-            )  # (N,)
+            mask, ratio = self.compute_loss_mask(episode_len=episode_len)
+            batch["loss_mask"] = torch.from_numpy(mask.astype(np.float32))  # (N,)
+            batch["loss_mask_ratio"] = torch.from_numpy(ratio)  # (N,)
 
         if self.returns is not None:
             batch["returns"] = torch.from_numpy(self.returns.reshape(-1))

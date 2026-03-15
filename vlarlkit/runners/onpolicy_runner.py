@@ -91,7 +91,7 @@ class OnPolicyRunner:
             )
 
             if normalize_advantages:
-                mask = rr.compute_loss_mask(episode_len=episode_len) if compute_loss_masks else None
+                mask, _ = rr.compute_loss_mask(episode_len=episode_len) if compute_loss_masks else (None, None)
                 stats = allreduce_mean_std(
                     {"adv": rr.advantages}, self.device, mask=mask,
                 )

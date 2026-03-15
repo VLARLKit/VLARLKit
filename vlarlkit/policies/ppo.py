@@ -151,6 +151,7 @@ class PPOPolicy:
         returns = batch["returns"] # (batch_size,)
         forward_inputs = batch["forward_inputs"]
         loss_mask = batch.get("loss_mask", None)  # (batch_size,) or None
+        loss_mask_ratio = batch.get("loss_mask_ratio", None)  # (batch_size,) or None
 
         if prev_logprobs.dim() > 1:
             prev_logprobs = prev_logprobs.sum(
@@ -184,6 +185,7 @@ class PPOPolicy:
                     self._slice_batch(forward_inputs, mb_inds), self.device
                 )
                 mb_mask = loss_mask[mb_inds].to(self.device) if loss_mask is not None else None
+                mb_ratio = loss_mask_ratio[mb_inds].to(self.device) if loss_mask_ratio is not None else None
 
                 out = self.model(
                     forward_inputs=mb_forward_inputs,
@@ -235,7 +237,13 @@ class PPOPolicy:
 
                 per_sample_entropy = entropy.reshape(-1)
 
-                if mb_mask is not None:
+                if mb_mask is not None and mb_ratio is not None:
+                    # masked_mean_ratio: up-weight short (successful) episodes
+                    policy_loss = (per_sample_policy_loss / mb_ratio * mb_mask).mean()
+                    value_loss = (per_sample_value_loss / mb_ratio * mb_mask).mean()
+                    entropy_val = (per_sample_entropy / mb_ratio * mb_mask).mean()
+                    value_mean = (values.detach() / mb_ratio * mb_mask).mean()
+                elif mb_mask is not None:
                     mask_sum = mb_mask.sum().clamp(min=1)
                     policy_loss = (per_sample_policy_loss * mb_mask).sum() / mask_sum
                     value_loss = (per_sample_value_loss * mb_mask).sum() / mask_sum
