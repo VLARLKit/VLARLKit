@@ -8,7 +8,7 @@ from typing import Any
 
 from vlarlkit.models.base import BaseModel
 from vlarlkit.utils.conversion_utils import to_device
-from vlarlkit.utils.fsdp_utils import wrap_model_with_fsdp
+from vlarlkit.utils.fsdp_utils import clip_grad_norm_, wrap_model_with_fsdp
 
 logger = logging.getLogger("vlarlkit.policy")
 
@@ -259,7 +259,7 @@ class PPOPolicy:
 
                 if should_sync:
                     if self._clip_grad > 0:
-                        self.model.clip_grad_norm_(self._clip_grad)
+                        clip_grad_norm_(self.model, self._clip_grad)
                     self._optimizer.step()
                     self._optimizer.zero_grad()
                     accum_step = 0

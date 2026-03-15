@@ -140,6 +140,63 @@ def mixed_precision_from_cfg(mp_cfg: dict | None) -> MixedPrecision | None:
     )
 
 
+@torch.no_grad()
+def clip_grad_norm_(
+    model: FSDP,
+    max_norm: float,
+    norm_type: float = 2.0,
+) -> float:
+    """Clip gradient norm for FSDP models, handling sharding and mixed dtypes.
+
+    For NO_SHARD, delegates to torch.nn.utils.clip_grad_norm_.
+    For sharded strategies (FULL_SHARD, etc.), computes the global norm via
+    all-reduce across ranks, in float32 to handle mixed-precision params.
+    """
+    if max_norm <= 0:
+        return 0.0
+
+    sharding = model.sharding_strategy
+    if sharding == ShardingStrategy.NO_SHARD:
+        return torch.nn.utils.clip_grad_norm_(
+            model.parameters(), max_norm, norm_type
+        ).item()
+
+    # --- Sharded: compute global grad norm in float32, then clip ---
+    norm_type = float(norm_type)
+    params_with_grad = [p for p in model.parameters() if p.grad is not None]
+    if not params_with_grad:
+        return 0.0
+
+    device = params_with_grad[0].device
+
+    if norm_type == float("inf"):
+        local_norm = max(
+            p.grad.detach().float().abs().max().item() for p in params_with_grad
+        )
+        total_norm_t = torch.tensor([local_norm], dtype=torch.float32, device=device)
+        dist.all_reduce(total_norm_t, op=dist.ReduceOp.MAX)
+    else:
+        # Each rank holds a disjoint shard → sum of local p-norms^p = global p-norm^p
+        local_norms = torch.stack([
+            torch.linalg.vector_norm(p.grad.detach().float(), norm_type)
+            for p in params_with_grad
+        ])
+        local_sum = torch.linalg.vector_norm(local_norms, norm_type) ** norm_type
+        total_norm_t = local_sum.unsqueeze(0)
+        dist.all_reduce(total_norm_t, op=dist.ReduceOp.SUM)
+        total_norm_t = total_norm_t ** (1.0 / norm_type)
+
+    total_norm = total_norm_t.item()
+    if total_norm <= max_norm:
+        return total_norm
+
+    clip_coef = max_norm / total_norm
+    for p in params_with_grad:
+        p.grad.detach().mul_(clip_coef)
+
+    return total_norm
+
+
 # ──────────────────────────── entry point ────────────────────────────
 
 
