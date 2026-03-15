@@ -142,28 +142,38 @@ def mixed_precision_from_cfg(mp_cfg: dict | None) -> MixedPrecision | None:
 
 @torch.no_grad()
 def clip_grad_norm_(
-    model: FSDP,
+    model_or_params,
     max_norm: float,
     norm_type: float = 2.0,
+    sharding_strategy: ShardingStrategy | None = None,
 ) -> float:
-    """Clip gradient norm for FSDP models, handling sharding and mixed dtypes.
+    """Clip gradient norm for FSDP models or a parameter list.
 
-    For NO_SHARD, delegates to torch.nn.utils.clip_grad_norm_.
-    For sharded strategies (FULL_SHARD, etc.), computes the global norm via
-    all-reduce across ranks, in float32 to handle mixed-precision params.
+    Accepts either an FSDP model or a list/tuple of parameters.
+    For FSDP models, the sharding strategy is read from the model.
+    For param lists, pass sharding_strategy explicitly; defaults to
+    NO_SHARD if omitted.
     """
     if max_norm <= 0:
         return 0.0
 
-    sharding = model.sharding_strategy
-    if sharding == ShardingStrategy.NO_SHARD:
+    if isinstance(model_or_params, (list, tuple)):
+        params = model_or_params
+        strategy = sharding_strategy or ShardingStrategy.NO_SHARD
+        is_sharded = strategy != ShardingStrategy.NO_SHARD
+    else:
+        model = model_or_params
+        is_sharded = model.sharding_strategy != ShardingStrategy.NO_SHARD
+        params = list(model.parameters())
+
+    if not is_sharded:
         return torch.nn.utils.clip_grad_norm_(
-            model.parameters(), max_norm, norm_type
+            params, max_norm, norm_type
         ).item()
 
     # --- Sharded: compute global grad norm in float32, then clip ---
     norm_type = float(norm_type)
-    params_with_grad = [p for p in model.parameters() if p.grad is not None]
+    params_with_grad = [p for p in params if p.grad is not None]
     if not params_with_grad:
         return 0.0
 
