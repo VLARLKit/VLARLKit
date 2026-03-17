@@ -10,9 +10,21 @@ from omegaconf import DictConfig
 
 from vlarlkit.data.replay_buffer import ReplayBuffer
 from vlarlkit.rollouts.rollout import Rollout
+from vlarlkit.utils.checkpoint import save_checkpoint
 from vlarlkit.utils.fsdp_utils import allreduce_mean_std, sync_fsdp_to_model
 
 logger = logging.getLogger("vlarlkit.runner")
+
+_REPLAY_PREFIXES = ("obs/", "next_obs/")
+_REPLAY_KEYS = {"actions", "rewards", "terminations"}
+
+
+def _filter_replay_keys(batch: dict) -> dict:
+    """Keep only the keys needed by the replay buffer."""
+    return {
+        k: v for k, v in batch.items()
+        if k in _REPLAY_KEYS or any(k.startswith(p) for p in _REPLAY_PREFIXES)
+    }
 
 
 class OffPolicyRunner:
@@ -36,6 +48,7 @@ class OffPolicyRunner:
         eval_rollout_worker: Rollout | None = None,
         replay_buffer: ReplayBuffer | None = None,
         metric_logger: Any = None,
+        output_dir: str = "",
     ) -> None:
         self.cfg = cfg
         self.policy = policy
@@ -43,6 +56,7 @@ class OffPolicyRunner:
         self.eval_rollout_worker = eval_rollout_worker
         self.replay_buffer = replay_buffer
         self.metric_logger = metric_logger
+        self._output_dir = output_dir
 
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
@@ -85,7 +99,7 @@ class OffPolicyRunner:
             while not self._should_stop.is_set():
                 rollout_info = self.train_rollout_worker.rollout_one_epoch()
                 rr = self.train_rollout_worker.rollout_result
-                transitions = rr.get_transitions()
+                transitions = rr.get_batch()
                 transitions["rollout_info"] = rollout_info
                 rr.clear()
                 self._queue_put(transitions)
@@ -97,10 +111,11 @@ class OffPolicyRunner:
     # Main loop
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
+    def run(self, start_step: int = 0) -> None:
         """Main entry point: start rollout thread, then consume data and update."""
         max_update_steps = int(self.cfg.runner.get("max_update_steps", 1000))
         eval_interval = int(self.cfg.runner.get("eval_interval", 0))
+        save_interval = int(self.cfg.runner.get("save_interval", 0))
         update_epoch = int(self.cfg.algorithm.get("update_epoch", 200))
 
         # Batch size per rank: global_batch_size / world_size, or fallback to minibatch_size
@@ -123,7 +138,8 @@ class OffPolicyRunner:
             )
 
         start_time = time.time()
-        update_step = 0
+        update_step = start_step
+        collection_round = 0
 
         while not self._should_stop.is_set() and update_step < max_update_steps:
             # Wait for a chunk of data from rollout thread
@@ -132,7 +148,7 @@ class OffPolicyRunner:
                 break
 
             rollout_info = data.pop("rollout_info")
-            self.replay_buffer.add(data)
+            self.replay_buffer.add(_filter_replay_keys(data))
             rollout_stats = allreduce_mean_std({
                 "success_rate": rollout_info["success_once"].astype(float),
             }, self.device)
@@ -171,6 +187,19 @@ class OffPolicyRunner:
 
             if self.rank == 0 and self.metric_logger is not None:
                 self.metric_logger.log(epoch_log, step=update_step)
+
+            collection_round += 1
+            if save_interval > 0 and collection_round % save_interval == 0:
+                wandb_run_id = getattr(getattr(self.metric_logger, "run", None), "id", None)
+                save_checkpoint(
+                    output_dir=self._output_dir,
+                    policy=self.policy,
+                    step=update_step,
+                    step_key="update_step",
+                    wandb_run_id=wandb_run_id,
+                    replay_buffer=self.replay_buffer,
+                    rank=self.rank,
+                )
 
             dist.barrier()
 

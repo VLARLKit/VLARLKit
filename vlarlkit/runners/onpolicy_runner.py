@@ -7,6 +7,7 @@ import torch.distributed as dist
 from omegaconf import DictConfig
 
 from vlarlkit.rollouts.rollout import Rollout
+from vlarlkit.utils.checkpoint import save_checkpoint
 from vlarlkit.utils.fsdp_utils import allreduce_mean, allreduce_mean_std, sync_fsdp_to_model
 
 logger = logging.getLogger("vlarlkit.runner")
@@ -26,6 +27,7 @@ class OnPolicyRunner:
         train_rollout_worker: Rollout,
         eval_rollout_worker: Rollout | None = None,
         metric_logger: Any = None,
+        output_dir: str = "",
     ) -> None:
 
         self.cfg = cfg
@@ -33,15 +35,17 @@ class OnPolicyRunner:
         self.train_rollout_worker = train_rollout_worker
         self.eval_rollout_worker = eval_rollout_worker
         self.metric_logger = metric_logger
+        self._output_dir = output_dir
 
         self.rank = dist.get_rank()
         self.world_size = dist.get_world_size()
         self.device = torch.device(f"cuda:{self.rank}")
 
-    def run(self) -> None:
+    def run(self, start_epoch: int = 1) -> None:
         """Main RL loop: all ranks rollout -> all-reduce adv stats -> learn -> sync actor; periodically eval."""
         max_epochs = int(self.cfg.runner.max_epochs)
         eval_interval = int(self.cfg.runner.eval_interval)
+        save_interval = int(self.cfg.runner.get("save_interval", 0))
 
         gamma = float(self.cfg.algorithm.gamma)
         gae_lambda = float(self.cfg.algorithm.gae_lambda)
@@ -69,7 +73,7 @@ class OnPolicyRunner:
 
         start_time = time.time()
 
-        for epoch in range(1, max_epochs + 1):
+        for epoch in range(start_epoch, max_epochs + 1):
             # rollout
             rollout_start_time = time.time()
             rr = self.train_rollout_worker.rollout_result
@@ -137,6 +141,17 @@ class OnPolicyRunner:
 
             if self.rank == 0 and self.metric_logger is not None and epoch_log:
                 self.metric_logger.log(epoch_log, step=epoch)
+
+            if save_interval > 0 and epoch % save_interval == 0:
+                wandb_run_id = getattr(getattr(self.metric_logger, "run", None), "id", None)
+                save_checkpoint(
+                    output_dir=self._output_dir,
+                    policy=self.policy,
+                    step=epoch,
+                    step_key="epoch",
+                    wandb_run_id=wandb_run_id,
+                    rank=self.rank,
+                )
 
             dist.barrier()
 

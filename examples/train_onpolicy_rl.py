@@ -10,6 +10,8 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 
 from vlarlkit.data.io_struct import RolloutResult
+from vlarlkit.utils.checkpoint import load_checkpoint
+from vlarlkit.utils.fsdp_utils import sync_fsdp_to_model
 from vlarlkit.utils.remote_env import RemoteEnv
 from vlarlkit.models.openpi import get_model
 from vlarlkit.policies import PPOPolicy
@@ -34,23 +36,9 @@ def main(cfg: DictConfig) -> None:
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
     rank = dist.get_rank()
+    output_dir = HydraConfig.get().runtime.output_dir
 
-    # Initialize wandb-logger on rank 0 only
-    if not cfg.runner.is_debug and rank == 0:
-        logger_cfg = cfg.runner.get("logger", {})
-        wandb.init(
-            project=logger_cfg.get("project", "VLARLKit"),
-            name=logger_cfg.get("experiment_name", "default"),
-            config=OmegaConf.to_container(cfg, resolve=True),
-            dir=HydraConfig.get().runtime.output_dir,
-        )
-        metric_logger = wandb
-    else:
-        metric_logger = None
-
-    # Must be called before any model creation: sets the default CUDA device
-    # for this process so that implicit CUDA ops (e.g. inside torch.compile,
-    # transformers init) land on the correct GPU.
+    # Must be called before any model creation
     torch.cuda.set_device(rank)
 
     # Set global random seeds (different per rank for data diversity)
@@ -75,14 +63,43 @@ def main(cfg: DictConfig) -> None:
     train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train")
     eval_rollout_worker = Rollout(cfg, eval_env, actor_model, mode="eval")
 
+    # Load checkpoint if resuming
+    resume_from = cfg.runner.get("resume_from", None)
+    start_epoch = 1
+    wandb_run_id = None
+    if resume_from:
+        ckpt_meta = load_checkpoint(resume_from, policy, step_key="epoch", rank=rank)
+        if ckpt_meta:
+            start_epoch = ckpt_meta["epoch"] + 1
+            wandb_run_id = ckpt_meta.get("wandb_run_id")
+            sync_fsdp_to_model(policy.get_model(), actor_model)
+
+    # Initialize wandb-logger on rank 0 only (after checkpoint load for resume)
+    if not cfg.runner.is_debug and rank == 0:
+        logger_cfg = cfg.runner.get("logger", {})
+        wandb_kwargs = dict(
+            project=logger_cfg.get("project", "VLARLKit"),
+            name=logger_cfg.get("experiment_name", "default"),
+            config=OmegaConf.to_container(cfg, resolve=True),
+            dir=output_dir,
+        )
+        if wandb_run_id:
+            wandb_kwargs["id"] = wandb_run_id
+            wandb_kwargs["resume"] = "must"
+        wandb.init(**wandb_kwargs)
+        metric_logger = wandb
+    else:
+        metric_logger = None
+
     runner = OnPolicyRunner(
         cfg=cfg,
         policy=policy,
         train_rollout_worker=train_rollout_worker,
         eval_rollout_worker=eval_rollout_worker,
         metric_logger=metric_logger,
+        output_dir=output_dir,
     )
-    runner.run()
+    runner.run(start_epoch=start_epoch)
 
 
 if __name__ == "__main__":

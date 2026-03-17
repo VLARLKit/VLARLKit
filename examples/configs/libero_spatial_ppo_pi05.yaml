@@ -118,6 +118,8 @@ runner:
   seed: 0
   max_epochs: 100
   eval_interval: 5
+  save_interval: 10
+  resume_from: null
   is_debug: False # if True, it will not generate any log files
   logger:
     project: "VLARLKit"

@@ -137,9 +137,9 @@ class DSRLPolicy:
         total_critic_loss = 0.0
         total_q_mean = 0.0
         for mb in micro_batches:
-            obs, next_obs, actions, rewards, dones = self._prepare_batch(mb)
+            obs, next_obs, actions, rewards, terminations = self._prepare_batch(mb)
             critic_loss, critic_metrics = self._forward_critic(
-                obs, next_obs, actions, rewards, dones
+                obs, next_obs, actions, rewards, terminations
             )
             (critic_loss / n_accum).backward()
             total_critic_loss += critic_loss.item()
@@ -226,7 +226,7 @@ class DSRLPolicy:
             micro_batches.append(mb)
         return micro_batches
 
-    def _forward_critic(self, obs, next_obs, actions, rewards, dones):
+    def _forward_critic(self, obs, next_obs, actions, rewards, terminations):
         """Compute critic loss: MSE(Q(s,a), r + gamma * (min Q_target(s', pi(s')) - alpha * log_pi))."""
         discount = self._gamma ** self._num_action_chunks
 
@@ -252,7 +252,7 @@ class DSRLPolicy:
 
             target_q_values = (
                 rewards.unsqueeze(-1)
-                + (~dones.unsqueeze(-1)) * discount * qf_next
+                + (~terminations.unsqueeze(-1)) * discount * qf_next
             )
 
         current_q = self.model(
@@ -309,7 +309,7 @@ class DSRLPolicy:
         """Convert flat replay buffer batch to nested obs dicts on device.
 
         Expected keys: "obs/main_images", "obs/states", "next_obs/main_images",
-        "next_obs/states", "actions", "rewards", "dones".
+        "next_obs/states", "actions", "rewards", "terminations".
         """
         def _build_obs_dict(prefix):
             obs_dict = {}
@@ -335,11 +335,27 @@ class DSRLPolicy:
         rewards = torch.from_numpy(raw_rewards).float() if isinstance(raw_rewards, np.ndarray) else raw_rewards.float()
         rewards = rewards.to(self.device)
 
-        raw_dones = batch["dones"]
-        dones = torch.from_numpy(raw_dones).bool() if isinstance(raw_dones, np.ndarray) else raw_dones.bool()
-        dones = dones.to(self.device)
+        raw_term = batch["terminations"]
+        terminations = torch.from_numpy(raw_term).bool() if isinstance(raw_term, np.ndarray) else raw_term.bool()
+        terminations = terminations.to(self.device)
 
-        return obs, next_obs, actions, rewards, dones
+        return obs, next_obs, actions, rewards, terminations
+
+    def state_dict(self) -> dict:
+        return {
+            "update_step": self._update_step,
+            "base_alpha": self._base_alpha.data.cpu(),
+            "target_shadow_f32": {k: v.cpu() for k, v in self._target_shadow_f32.items()},
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self._update_step = state["update_step"]
+        self._base_alpha.data.copy_(state["base_alpha"].to(self.device))
+        self._target_shadow_f32 = {k: v.to(self.device) for k, v in state["target_shadow_f32"].items()}
+        # Rebuild target model params from shadow
+        with torch.no_grad():
+            for name, param in self._target_model.named_parameters():
+                param.data.copy_(self._target_shadow_f32[name].to(param.dtype))
 
     def get_model(self) -> torch.nn.Module:
         return self.model

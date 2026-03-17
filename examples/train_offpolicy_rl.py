@@ -11,6 +11,8 @@ from omegaconf import DictConfig, OmegaConf
 
 from vlarlkit.data.io_struct import RolloutResult
 from vlarlkit.data.replay_buffer import ReplayBuffer
+from vlarlkit.utils.checkpoint import load_checkpoint
+from vlarlkit.utils.fsdp_utils import sync_fsdp_to_model
 from vlarlkit.utils.remote_env import RemoteEnv
 from vlarlkit.models.openpi import get_model
 from vlarlkit.policies import DSRLPolicy
@@ -35,19 +37,7 @@ def main(cfg: DictConfig) -> None:
     if not dist.is_initialized():
         dist.init_process_group(backend="nccl")
     rank = dist.get_rank()
-
-    # Initialize wandb-logger on rank 0 only
-    if not cfg.runner.is_debug and rank == 0:
-        logger_cfg = cfg.runner.get("logger", {})
-        wandb.init(
-            project=logger_cfg.get("project", "VLARLKit"),
-            name=logger_cfg.get("experiment_name", "default"),
-            config=OmegaConf.to_container(cfg, resolve=True),
-            dir=HydraConfig.get().runtime.output_dir,
-        )
-        metric_logger = wandb
-    else:
-        metric_logger = None
+    output_dir = HydraConfig.get().runtime.output_dir
 
     torch.cuda.set_device(rank)
 
@@ -62,12 +52,13 @@ def main(cfg: DictConfig) -> None:
     model = get_model(cfg.model)
     target_model = get_model(cfg.model)
 
-    # SACPolicy handles FSDP wrapping internally
     policy = DSRLPolicy(cfg, model, target_model, rank)
 
     # Initialize replay buffer
+    world_size = dist.get_world_size()
+    global_buffer_size = int(cfg.algorithm.get("global_replay_buffer_size", 100000))
     replay_buffer = ReplayBuffer(
-        max_size=int(cfg.algorithm.get("replay_buffer_size", 100000)),
+        max_size=global_buffer_size // world_size,
         seed=seed + rank,
     )
 
@@ -82,6 +73,34 @@ def main(cfg: DictConfig) -> None:
     train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train")
     eval_rollout_worker = Rollout(cfg, eval_env, actor_model, mode="eval")
 
+    # Load checkpoint if resuming
+    resume_from = cfg.runner.get("resume_from", None)
+    start_step = 0
+    wandb_run_id = None
+    if resume_from:
+        ckpt_meta = load_checkpoint(resume_from, policy, step_key="update_step", replay_buffer=replay_buffer, rank=rank)
+        if ckpt_meta:
+            start_step = ckpt_meta["update_step"]
+            wandb_run_id = ckpt_meta.get("wandb_run_id")
+            sync_fsdp_to_model(policy.get_model(), actor_model)
+
+    # Initialize wandb-logger on rank 0 only (after checkpoint load for resume)
+    if not cfg.runner.is_debug and rank == 0:
+        logger_cfg = cfg.runner.get("logger", {})
+        wandb_kwargs = dict(
+            project=logger_cfg.get("project", "VLARLKit"),
+            name=logger_cfg.get("experiment_name", "default"),
+            config=OmegaConf.to_container(cfg, resolve=True),
+            dir=output_dir,
+        )
+        if wandb_run_id:
+            wandb_kwargs["id"] = wandb_run_id
+            wandb_kwargs["resume"] = "must"
+        wandb.init(**wandb_kwargs)
+        metric_logger = wandb
+    else:
+        metric_logger = None
+
     runner = OffPolicyRunner(
         cfg=cfg,
         policy=policy,
@@ -89,8 +108,9 @@ def main(cfg: DictConfig) -> None:
         eval_rollout_worker=eval_rollout_worker,
         replay_buffer=replay_buffer,
         metric_logger=metric_logger,
+        output_dir=output_dir,
     )
-    runner.run()
+    runner.run(start_step=start_step)
 
 
 if __name__ == "__main__":

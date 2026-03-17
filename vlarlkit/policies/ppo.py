@@ -105,6 +105,17 @@ class PPOPolicy:
         else:
             raise ValueError(f"Invalid learning rate scheduler type: {sched_type}")
 
+    def state_dict(self) -> dict:
+        return {
+            "global_step": self._global_step,
+            "lr_scheduler": self._lr_scheduler.state_dict(),
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self._global_step = state["global_step"]
+        self.set_global_step(self._global_step)
+        self._lr_scheduler.load_state_dict(state["lr_scheduler"])
+
     def get_model(self) -> torch.nn.Module:
         return self.model
 

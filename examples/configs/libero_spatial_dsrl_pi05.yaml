@@ -22,8 +22,7 @@ algorithm:
 
   # Training
   update_epoch: 200
-  replay_buffer_size: 15000
-  min_buffer_size: 10
+  global_replay_buffer_size: 100000
   global_batch_size: 512 # global_bs = (micro_bs * gradient_accumulation_steps) * world_size
   micro_batch_size: 64 # bs per rank & per forward pass
   queue_size: 4
@@ -109,6 +108,8 @@ runner:
   seed: 42
   max_update_steps: 10000
   eval_interval: 100
+  save_interval: 10
+  resume_from: null
   is_debug: False
   logger:
     project: "VLARLKit"
