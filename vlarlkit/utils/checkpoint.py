@@ -35,8 +35,7 @@ def _load_fsdp_state_dict(fsdp_model: FSDP, state_dict: dict) -> None:
 def save_checkpoint(
     output_dir: str,
     policy,
-    step: int,
-    step_key: str,
+    epoch: int,
     wandb_run_id: str | None = None,
     replay_buffer=None,
     rank: int = 0,
@@ -50,7 +49,7 @@ def save_checkpoint(
         os.makedirs(ckpt_dir, exist_ok=True)
 
         save_dict = {
-            step_key: step,
+            "epoch": epoch,
             "model_state_dict": model_state,
             "policy_state": policy.state_dict(),
             "wandb_run_id": wandb_run_id,
@@ -68,7 +67,7 @@ def save_checkpoint(
                 os.remove(tmp_path)
             raise
 
-        logger.info("Checkpoint saved at step %d -> %s", step, dst)
+        logger.info("Checkpoint saved at epoch %d -> %s", epoch, dst)
 
     # Each rank saves its own replay buffer (contents differ per rank)
     if replay_buffer is not None:
@@ -81,7 +80,6 @@ def save_checkpoint(
 def load_checkpoint(
     resume_from: str,
     policy,
-    step_key: str,
     replay_buffer=None,
     rank: int = 0,
 ) -> dict | None:
@@ -94,13 +92,9 @@ def load_checkpoint(
 
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
-    # Load model weights via FSDP's state dict context (symmetric with save)
     _load_fsdp_state_dict(policy.get_model(), ckpt.pop("model_state_dict"))
-
-    # Load policy-specific state (lr_scheduler, global_step, alpha, etc.)
     policy.load_state_dict(ckpt.pop("policy_state"))
 
-    # Load replay buffer (each rank loads its own)
     if replay_buffer is not None:
         buf_path = os.path.join(resume_from, "checkpoint", f"replay_buffer_rank{rank}.npz")
         if os.path.exists(buf_path):
@@ -108,13 +102,13 @@ def load_checkpoint(
             logger.info("Rank %d: replay buffer loaded (%d transitions)", rank, len(replay_buffer))
 
     meta = {
-        step_key: ckpt[step_key],
+        "epoch": ckpt["epoch"],
         "wandb_run_id": ckpt.get("wandb_run_id"),
     }
     del ckpt
 
     if rank == 0:
-        logger.info("Checkpoint loaded from %s (%s=%d)", ckpt_path, step_key, meta[step_key])
+        logger.info("Checkpoint loaded from %s (epoch=%d)", ckpt_path, meta["epoch"])
 
     dist.barrier()
     return meta
