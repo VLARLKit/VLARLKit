@@ -75,12 +75,12 @@ def main(cfg: DictConfig) -> None:
 
     # Load checkpoint if resuming
     resume_from = cfg.runner.get("resume_from", None)
-    start_step = 0
+    start_epoch = 0
     wandb_run_id = None
     if resume_from:
-        ckpt_meta = load_checkpoint(resume_from, policy, step_key="update_step", replay_buffer=replay_buffer, rank=rank)
+        ckpt_meta = load_checkpoint(resume_from, policy, replay_buffer=replay_buffer, rank=rank)
         if ckpt_meta:
-            start_step = ckpt_meta["update_step"]
+            start_epoch = ckpt_meta["epoch"]
             wandb_run_id = ckpt_meta.get("wandb_run_id")
             sync_fsdp_to_model(policy.get_model(), actor_model)
 
@@ -110,7 +110,7 @@ def main(cfg: DictConfig) -> None:
         metric_logger=metric_logger,
         output_dir=output_dir,
     )
-    runner.run(start_step=start_step)
+    runner.run(start_epoch=start_epoch)
 
 
 if __name__ == "__main__":
