@@ -59,8 +59,8 @@ class ReplayBuffer:
         indices = self._rng.randint(0, self._size, size=batch_size)
         return {k: v[indices] for k, v in self._storage.items()}
 
-    def ready(self) -> bool:
-        return self._size > 0
+    def ready(self, min_size: int = 1) -> bool:
+        return self._size >= min_size
 
     def save(self, path: str) -> None:
         """Save buffer to .npz file. Only saves populated portion."""

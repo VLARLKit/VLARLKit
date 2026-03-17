@@ -111,19 +111,32 @@ class OffPolicyRunner:
     # Main loop
     # ------------------------------------------------------------------
 
-    def run(self, start_step: int = 0) -> None:
+    def _is_warmup_ready(self, warmup_steps: int) -> bool:
+        """Check if all ranks' replay buffers have enough warmup data."""
+        local_ready = torch.tensor(
+            1 if self.replay_buffer.ready(warmup_steps) else 0,
+            device=self.device,
+        )
+        dist.all_reduce(local_ready, op=dist.ReduceOp.MIN)
+        return local_ready.item() == 1
+
+    def run(self, start_epoch: int = 0) -> None:
         """Main entry point: start rollout thread, then consume data and update."""
-        max_update_steps = int(self.cfg.runner.get("max_update_steps", 1000))
+        max_epochs = int(self.cfg.runner.get("max_epochs", 1000))
         eval_interval = int(self.cfg.runner.get("eval_interval", 0))
         save_interval = int(self.cfg.runner.get("save_interval", 0))
-        update_epoch = int(self.cfg.algorithm.get("update_epoch", 200))
+        utd_ratio = float(self.cfg.algorithm.get("utd_ratio", 1.0))
 
-        # Batch size per rank: global_batch_size / world_size, or fallback to minibatch_size
+        # Batch size per rank
         global_bs = self.cfg.algorithm.get("global_batch_size", None)
         if global_bs is not None:
             batch_size = int(global_bs) // self.world_size
         else:
             batch_size = int(self.cfg.algorithm.get("minibatch_size", 256))
+
+        # Warmup: global warmup steps divided across ranks
+        global_warmup = int(self.cfg.algorithm.get("global_warmup_steps", 0))
+        warmup_steps = max(1, global_warmup // self.world_size)
 
         # Start rollout thread
         rollout_thread = threading.Thread(
@@ -133,34 +146,47 @@ class OffPolicyRunner:
 
         if self.rank == 0:
             logger.info(
-                "Off-policy training started (max_update_steps=%d, update_epoch=%d, batch_size=%d)",
-                max_update_steps, update_epoch, batch_size,
+                "Off-policy training started (max_epochs=%d, utd_ratio=%.1f, "
+                "batch_size=%d, warmup_steps=%d per rank)",
+                max_epochs, utd_ratio, batch_size, warmup_steps,
             )
 
         start_time = time.time()
-        update_step = start_step
-        collection_round = 0
+        epoch = start_epoch
+        warmed_up = False
 
-        while not self._should_stop.is_set() and update_step < max_update_steps:
-            # Wait for a chunk of data from rollout thread
+        while not self._should_stop.is_set() and epoch < max_epochs:
             data = self._queue_get()
             if data is None:
                 break
 
             rollout_info = data.pop("rollout_info")
-            self.replay_buffer.add(_filter_replay_keys(data))
+            filtered = _filter_replay_keys(data)
+            new_samples = next(iter(filtered.values())).shape[0]
+            self.replay_buffer.add(filtered)
             rollout_stats = allreduce_mean_std({
                 "success_rate": rollout_info["success_once"].astype(float),
             }, self.device)
 
-            # Run update_epoch gradient updates per data collection
+            # Wait for all ranks to have enough warmup data
+            if not warmed_up:
+                if not self._is_warmup_ready(warmup_steps):
+                    if self.rank == 0:
+                        logger.info(
+                            "Warming up replay buffer... (%d/%d per rank)",
+                            len(self.replay_buffer), warmup_steps,
+                        )
+                    continue
+                warmed_up = True
+                if self.rank == 0:
+                    logger.info("All ranks warmed up, starting training")
+
+            # Update policy
+            num_updates = max(1, int(utd_ratio * new_samples))
             update_start = time.time()
-            for _ in range(update_epoch):
+            for _ in range(num_updates):
                 batch = self.replay_buffer.sample(batch_size)
                 train_metrics = self.policy.run_update(batch)
-                update_step += 1
-                if update_step >= max_update_steps:
-                    break
             update_end = time.time()
 
             # Sync weights: policy -> actor (lock-free)
@@ -168,34 +194,34 @@ class OffPolicyRunner:
                 self.policy.get_model(), self.train_rollout_worker.actor_model
             )
 
+            epoch += 1
             epoch_log: dict[str, float] = {}
             if self.rank == 0:
                 epoch_log.update({f"train/{k}": v for k, v in train_metrics.items()})
                 epoch_log["rollout/success_rate"] = rollout_stats["success_rate"][0]
                 metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in train_metrics.items())
                 logger.info(
-                    "Step %d/%d - %s (%.2fs)",
-                    update_step, max_update_steps, metrics_str,
-                    update_end - update_start,
+                    "Epoch %d/%d - %s (%d updates, %.2fs)",
+                    epoch, max_epochs, metrics_str,
+                    num_updates, update_end - update_start,
                 )
 
-            # Eval (all ranks must participate in allreduce inside _run_evaluate)
-            if eval_interval > 0 and update_step % eval_interval == 0:
-                eval_metrics = self._run_evaluate(update_step)
+            # Eval
+            if eval_interval > 0 and epoch % eval_interval == 0:
+                eval_metrics = self._run_evaluate(epoch)
                 if self.rank == 0 and eval_metrics is not None:
                     epoch_log.update(eval_metrics)
 
             if self.rank == 0 and self.metric_logger is not None:
-                self.metric_logger.log(epoch_log, step=update_step)
-
-            collection_round += 1
-            if save_interval > 0 and collection_round % save_interval == 0:
+                self.metric_logger.log(epoch_log, step=epoch)
+            
+            # Save checkpoint
+            if save_interval > 0 and epoch % save_interval == 0:
                 wandb_run_id = getattr(getattr(self.metric_logger, "run", None), "id", None)
                 save_checkpoint(
                     output_dir=self._output_dir,
                     policy=self.policy,
-                    step=update_step,
-                    step_key="update_step",
+                    epoch=epoch,
                     wandb_run_id=wandb_run_id,
                     replay_buffer=self.replay_buffer,
                     rank=self.rank,
@@ -209,11 +235,11 @@ class OffPolicyRunner:
 
         total_time = time.time() - start_time
         if self.rank == 0:
-            logger.info("Training completed in %.2fs (%d updates)", total_time, update_step)
+            logger.info("Training completed in %.2fs (%d epochs)", total_time, epoch)
             if self.metric_logger is not None:
                 self.metric_logger.finish()
 
-    def _run_evaluate(self, step: int = 0) -> dict[str, float] | None:
+    def _run_evaluate(self, epoch: int = 0) -> dict[str, float] | None:
         """Run eval on all ranks and all-reduce results."""
         if self.eval_rollout_worker is None:
             return None
@@ -236,7 +262,7 @@ class OffPolicyRunner:
                 "eval/episode_length_std": stats["episode_len"][1],
             }
             eval_str = ", ".join(f"{k}={v:.4f}" for k, v in eval_metrics.items())
-            logger.info("Eval step %d: %s", step, eval_str)
+            logger.info("Eval epoch %d: %s", epoch, eval_str)
             return eval_metrics
 
         return None
