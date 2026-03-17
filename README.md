@@ -6,13 +6,13 @@ An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) m
 
 - **Simple and clear implementation** — cleanly separated policy, rollout, runner, and model layers with minimal abstraction; easy to read, modify, and extend for research purposes
 - **Environment-decoupled architecture** — environments run as independent processes via ZMQ, eliminating dependency conflicts between different benchmark simulators
-- **Async off-policy training (on building)** — supports asynchronous off-policy training, enabling non-blocking data collection alongside model updates
+- **Async off-policy training** — supports asynchronous off-policy training, enabling non-blocking data collection alongside model updates
 
 ## Supported Algorithms, Base Models, and Benchmarks (Keeping progress)
 
 | Category | Supported |
 |---|---|
-| **RL Algorithms** | PPO |
+| **RL Algorithms** | PPO (on-policy), DSRL (off-policy) |
 | **Base Models** | $\pi_{\text{0.5}}$ |
 | **Benchmarks** | LIBERO |
 
@@ -31,24 +31,15 @@ uv pip install -e .
 cp -r .venv/lib/python3.11/site-packages/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
 ```
 
-### 2. Benchmarks (Optional)
+### 2. Benchmarks (choose one/more you need)
 
 The environment client runs in a **separate** Python environment with its own dependencies. This avoids dependency conflicts between the simulator and the training stack.
 
-You can choose install any one you need.
+Install scripts for each benchmark are located in the `third_party/` directory. Run the one you need:
 
-#### Install LIBERO
 ```bash
-conda create -n libero python=3.8
-conda activate libero
-git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git
-cd LIBERO
-touch libero/__init__.py
-pip install cmake==3.24.3
-pip install -r requirements.txt
-pip install torch==1.11.0+cu113 torchvision==0.12.0+cu113 torchaudio==0.11.0 --extra-index-url https://download.pytorch.org/whl/cu113
-pip install zmq
-pip install -e .
+# LIBERO
+bash third_party/install_libero.sh
 ```
 
 ### Quick Start
@@ -79,8 +70,9 @@ bash examples/run_onpolicy_rl.sh
 
 - [ ] Add CALVIN and ManiSkill benchmark support
 - [ ] Add GRPO algorithm support
-- [ ] Add off-policy asynchronous training support
+- [x] Add off-policy asynchronous training support
 - [ ] Add OpenVLA base model support
+- [ ] Add offline and model-based VLA methods support
 
 ## Acknowledgements
 We borrow some good designs from [RLinf](https://github.com/RLinf/RLinf). The model integration and environment module implementations are primarily adapted from RLinf. We thank the RLinf team for their foundational work.
