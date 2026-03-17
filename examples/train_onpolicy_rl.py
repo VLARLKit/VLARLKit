@@ -68,7 +68,7 @@ def main(cfg: DictConfig) -> None:
     start_epoch = 1
     wandb_run_id = None
     if resume_from:
-        ckpt_meta = load_checkpoint(resume_from, policy, step_key="epoch", rank=rank)
+        ckpt_meta = load_checkpoint(resume_from, policy, rank=rank)
         if ckpt_meta:
             start_epoch = ckpt_meta["epoch"] + 1
             wandb_run_id = ckpt_meta.get("wandb_run_id")

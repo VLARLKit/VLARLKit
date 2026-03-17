@@ -74,7 +74,7 @@ class OnPolicyRunner:
         start_time = time.time()
 
         for epoch in range(start_epoch, max_epochs + 1):
-            # rollout
+            # Rollout
             rollout_start_time = time.time()
             rr = self.train_rollout_worker.rollout_result
             self.train_rollout_worker.init_rollout()
@@ -102,7 +102,7 @@ class OnPolicyRunner:
                 mean, std = stats["adv"]
                 rr.norm_adv(mean, std + 1e-8)
 
-            # update
+            # Update policy
             batch = rr.get_batch(compute_loss_masks=compute_loss_masks, episode_len=episode_len)
 
             batch_stats = allreduce_mean({
@@ -130,11 +130,8 @@ class OnPolicyRunner:
 
             sync_fsdp_to_model(self.policy.get_model(), self.train_rollout_worker.actor_model)
 
-            # eval
-            if (
-                eval_interval > 0
-                and (epoch % eval_interval == 0 or epoch == 1 or epoch == max_epochs)
-            ):
+            # Eval
+            if eval_interval > 0 and epoch % eval_interval == 0:
                 eval_metrics = self._run_evaluate(epoch)
                 if self.rank == 0 and eval_metrics:
                     epoch_log.update(eval_metrics)
@@ -142,13 +139,13 @@ class OnPolicyRunner:
             if self.rank == 0 and self.metric_logger is not None and epoch_log:
                 self.metric_logger.log(epoch_log, step=epoch)
 
+            # Save checkpoint
             if save_interval > 0 and epoch % save_interval == 0:
                 wandb_run_id = getattr(getattr(self.metric_logger, "run", None), "id", None)
                 save_checkpoint(
                     output_dir=self._output_dir,
                     policy=self.policy,
-                    step=epoch,
-                    step_key="epoch",
+                    epoch=epoch,
                     wandb_run_id=wandb_run_id,
                     rank=self.rank,
                 )
@@ -162,11 +159,7 @@ class OnPolicyRunner:
                 self.metric_logger.finish()
 
     def _run_evaluate(self, epoch: int = 0) -> dict[str, float] | None:
-        """Run eval on all ranks and all-reduce the results.
-
-        Returns:
-            Eval metrics dict on rank 0, None on other ranks or if no eval worker.
-        """
+        """Run eval on all ranks and all-reduce results."""
         if self.eval_rollout_worker is None:
             return None
 
