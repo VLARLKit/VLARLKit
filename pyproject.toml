@@ -1,3 +1,6 @@
+[tool.uv]
+python-preference = "system"
+
 [project]
 name = "vlarlkit"
 version = "0.1.0"
@@ -10,7 +13,15 @@ dependencies = [
     "pytest>=9.0.2",
     "tensorflow>=2.15.0",
     "zmq>=0.0.0",
+    "evdev",
 ]
 
 [tool.uv.sources]
 openpi = { git = "https://github.com/RLinf/openpi", branch = "main" }
+evdev = { index = "drac-wheelhouse" }
+
+[[tool.uv.index]]
+name = "drac-wheelhouse"
+url = "/cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic"
+format = "flat"
+explicit = true
