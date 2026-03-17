@@ -10,7 +10,7 @@ from vlarlkit.utils.conversion_utils import to_numpy
 @dataclass(kw_only=True)
 class RolloutResult:
     """
-    Results of one-epoch rollouts.
+    Results of multiple-epoch rollouts.
     """
 
     obs: list[dict[str, Any]] = field(default_factory=list)
@@ -142,66 +142,18 @@ class RolloutResult:
         """Normalize advantages in-place with the given global mean and std."""
         self.advantages = (self.advantages - mean) / std
 
-    def get_transitions(self) -> dict[str, np.ndarray]:
-        """Pack current rollout data into a flat dict for off-policy use.
-
-        Flattens (T, n_envs, ...) into (T*n_envs, ...) and converts nested
-        obs/next_obs dicts into flat keys like "obs/main_images".
-
-        Returns:
-            A dict with flat keys and flattened numpy arrays, each (N, ...).
-        """
-        result: dict[str, np.ndarray] = {}
-
-        # Flatten obs/next_obs nested dicts into "prefix/key" flat keys
-        for prefix in ("obs", "next_obs"):
-            data_list = getattr(self, prefix)
-            if not data_list:
-                continue
-            for k in data_list[0].keys():
-                vals = [d[k] for d in data_list]
-                if isinstance(vals[0], np.ndarray):
-                    stacked = np.stack(vals)  # (T, n_envs, ...)
-                    result[f"{prefix}/{k}"] = stacked.reshape(
-                        -1, *stacked.shape[2:]
-                    )
-
-        # Flatten scalar fields
-        for name in ("actions", "rewards", "terminations", "truncations"):
-            data_list = getattr(self, name)
-            if data_list:
-                stacked = np.stack(data_list)  # (T, n_envs, ...)
-                result[name] = stacked.reshape(-1, *stacked.shape[2:])
-
-        # Compute dones
-        if "terminations" in result and "truncations" in result:
-            result["dones"] = np.logical_or(
-                result["terminations"], result["truncations"]
-            )
-
-        return result
-
     def get_batch(
         self,
         compute_loss_masks: bool = False,
         episode_len: int | None = None,
-    ) -> dict[str, torch.Tensor | dict[str, torch.Tensor]]:
-        """
-        Stack all rollout data and flatten (T, n_envs) into a single sample
-        dimension N = T * n_envs.  Every tensor in the returned dict has
-        leading dim N (or is a dict of such tensors for obs / forward_inputs).
+    ) -> dict[str, torch.Tensor]:
+        """Stack and flatten rollout data into a single batch dict.
 
-        Advantage normalization should be done externally via
-        compute_adv_stats() + norm_adv() before calling this method.
-
-        Args:
-            compute_loss_masks: If True, compute a loss_mask that zeros out
-                samples after the first termination per env. The termination
-                step itself is kept (mask=1); all subsequent steps are masked
-                (mask=0).
+        Flattens (T, n_envs, ...) into (N, ...) where N = T * n_envs.
+        Obs/next_obs nested dicts are flattened to "obs/key", "next_obs/key".
 
         Returns:
-            A dict with flattened torch tensors, each of shape (N, ...).
+            A dict with flat keys and flattened torch tensors, each (N, ...).
         """
         def _stack_and_flatten(arrays: list[np.ndarray]) -> torch.Tensor:
             t = torch.from_numpy(np.stack(arrays))       # (T, n_envs, ...)
@@ -209,33 +161,33 @@ class RolloutResult:
 
         batch: dict[str, Any] = {}
 
-        for name in ("obs", "next_obs"):
-            data_list = getattr(self, name)
-            stacked = {}
+        # obs/next_obs → flat keys "obs/key", "next_obs/key"
+        for prefix in ("obs", "next_obs"):
+            data_list = getattr(self, prefix)
+            if not data_list:
+                continue
             for k in data_list[0].keys():
                 vals = [d[k] for d in data_list]
-                if not isinstance(vals[0], np.ndarray):
-                    continue
-                stacked[k] = _stack_and_flatten(vals)
-            batch[name] = stacked
+                if isinstance(vals[0], np.ndarray):
+                    batch[f"{prefix}/{k}"] = _stack_and_flatten(vals)
 
-        for name in ("actions", "rewards", "terminations", "truncations", "prev_logprobs", "prev_values"):
+        for name in ("actions", "rewards", "terminations", "truncations",
+                      "prev_logprobs", "prev_values"):
             data_list = getattr(self, name)
-            if len(data_list) > 0:
+            if data_list:
                 batch[name] = _stack_and_flatten(data_list)
 
         if self.forward_inputs:
-            data_list = self.forward_inputs
-            keys = data_list[0].keys()
+            keys = self.forward_inputs[0].keys()
             batch["forward_inputs"] = {
-                k: _stack_and_flatten([d[k] for d in data_list])
+                k: _stack_and_flatten([d[k] for d in self.forward_inputs])
                 for k in keys
             }
 
         if compute_loss_masks:
             mask, ratio = self.compute_loss_mask(episode_len=episode_len)
-            batch["loss_mask"] = torch.from_numpy(mask.astype(np.float32))  # (N,)
-            batch["loss_mask_ratio"] = torch.from_numpy(ratio)  # (N,)
+            batch["loss_mask"] = torch.from_numpy(mask.astype(np.float32))
+            batch["loss_mask_ratio"] = torch.from_numpy(ratio)
 
         if self.returns is not None:
             batch["returns"] = torch.from_numpy(self.returns.reshape(-1))
