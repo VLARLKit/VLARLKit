@@ -95,6 +95,7 @@ git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-ManiSkill-25Main-SFT
 git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-RoboTwin-SFT-adjust_bottle
 
 # download tokenizer of openpi model
+mkdir $HOME/.cache/openpi/big_vision
 wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
   "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
 ```
