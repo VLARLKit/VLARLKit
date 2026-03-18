@@ -55,6 +55,7 @@ module load git-lfs
 git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-SFT
 
 # download tokenizer of openpi model
+mkdir $HOME/.cache/openpi/big_vision
 wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
   "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
 ```
