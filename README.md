@@ -67,6 +67,7 @@ git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-SFT
 git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-ManiSkill-25Main-SFT
 
 # download tokenizer of openpi model
+mkdir $HOME/.cache/openpi/big_vision
 wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
   "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
 >>>>>>> b843121 (cluster-specific installation config)
