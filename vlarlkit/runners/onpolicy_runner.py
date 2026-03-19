@@ -1,3 +1,4 @@
+import gc
 import logging
 import time
 from typing import Any
@@ -129,6 +130,8 @@ class OnPolicyRunner:
                 epoch_log.update({f"train/{k}": v for k, v in train_metrics.items()})
 
             sync_fsdp_to_model(self.policy.get_model(), self.train_rollout_worker.actor_model)
+            gc.collect()
+            torch.cuda.empty_cache()
 
             # Eval
             if eval_interval > 0 and epoch % eval_interval == 0:
@@ -149,6 +152,10 @@ class OnPolicyRunner:
                     wandb_run_id=wandb_run_id,
                     rank=self.rank,
                 )
+                # FSDP state_dict() all-gather leaves temporary GPU buffers
+                # that Python GC may not immediately reclaim
+                gc.collect()
+                torch.cuda.empty_cache()
 
             dist.barrier()
 

@@ -1,3 +1,4 @@
+import gc
 import logging
 import queue
 import threading
@@ -193,6 +194,8 @@ class OffPolicyRunner:
             sync_fsdp_to_model(
                 self.policy.get_model(), self.train_rollout_worker.actor_model
             )
+            gc.collect()
+            torch.cuda.empty_cache()
 
             epoch += 1
             epoch_log: dict[str, float] = {}
@@ -226,6 +229,8 @@ class OffPolicyRunner:
                     replay_buffer=self.replay_buffer,
                     rank=self.rank,
                 )
+                gc.collect()
+                torch.cuda.empty_cache()
 
             dist.barrier()
 
