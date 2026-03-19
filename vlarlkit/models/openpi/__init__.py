@@ -23,6 +23,22 @@ import os
 from omegaconf import DictConfig
 
 
+_MODEL_REGISTRY = None
+
+
+def _get_registry():
+    global _MODEL_REGISTRY
+    if _MODEL_REGISTRY is None:
+        from vlarlkit.models.openpi.openpi_for_rl import OpenPi0RLConfig, OpenPi0ForRL
+        from vlarlkit.models.openpi.openpi_for_dsrl import OpenPi0DSRLConfig, OpenPi0ForDSRL
+
+        _MODEL_REGISTRY = {
+            "OpenPi0ForRL": (OpenPi0RLConfig, OpenPi0ForRL),
+            "OpenPi0ForDSRL": (OpenPi0DSRLConfig, OpenPi0ForDSRL),
+        }
+    return _MODEL_REGISTRY
+
+
 def get_model(cfg: DictConfig):
     import glob
 
@@ -33,13 +49,14 @@ def get_model(cfg: DictConfig):
     from openpi.training.config import AssetsConfig, DataConfig
 
     from vlarlkit.models.openpi.dataconfigs import get_data_config
-    from vlarlkit.models.openpi.openpi_model import (
-        OpenPi0Config,
-        OpenPi0ForRL,
-    )
 
-    # config
-    model_config = OpenPi0Config(**dict(cfg.openpi))
+    # Route to the correct model class
+    model_config_dict = dict(cfg.openpi)
+    model_class_name = model_config_dict.pop("model_class_name", "OpenPi0ForRL")
+
+    registry = _get_registry()
+    config_cls, model_cls = registry[model_class_name]
+    model_config = config_cls(**model_config_dict)
 
     # load model
     checkpoint_dir = download.maybe_download(str(cfg.model_path))
@@ -47,7 +64,7 @@ def get_model(cfg: DictConfig):
     if not weight_paths:
         weight_paths = [os.path.join(checkpoint_dir, "model.safetensors")]
 
-    model = OpenPi0ForRL(model_config)
+    model = model_cls(model_config)
     # train expert only
     if model_config.train_expert_only:
         model.freeze_vlm()
@@ -55,8 +72,6 @@ def get_model(cfg: DictConfig):
     for weight_path in weight_paths:
         safetensors.torch.load_model(model, weight_path, strict=False)
     model.paligemma_with_expert.to_bfloat16_for_selected_params("bfloat16")
-    # fsdp replace
-    # model.paligemma_with_expert.replace_gemma_decoder_layers()
 
     # load data stats
     data_config_cls = get_data_config(cfg.data.name)(

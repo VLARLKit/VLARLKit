@@ -1,7 +1,7 @@
 defaults:
   - envs/libero_spatial@env.train
   - envs/libero_spatial@env.eval
-  - models/pi05@model
+  - models/pi05_for_rl@model
 
 hydra:
   run:

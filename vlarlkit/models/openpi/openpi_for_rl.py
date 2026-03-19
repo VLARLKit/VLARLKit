@@ -37,7 +37,7 @@ from vlarlkit.models.modules.value_head import ValueHead
 
 
 @dataclass(frozen=True)
-class OpenPi0Config(Pi0Config):
+class OpenPi0RLConfig(Pi0Config):
     # config for rl
     config_name: str = "pi0_libero"  # pi0_libero, pi05_libero, pi0_maniskill, pi05_maniskill, pi0_metaworld, pi05_metaworld
     num_images_in_input: int = 2  # number of images in input
@@ -68,24 +68,11 @@ class OpenPi0Config(Pi0Config):
     add_value_head: bool = False  # add value head for ppo
     value_after_vlm: bool = False  # value after vlm, pi05 mode
     value_vlm_mode: str = "mean_token"  # last_token, mean_token, first_token
-    # DSRL parameters
-    use_dsrl: bool = False
-    dsrl_state_dim: int = 8
-    dsrl_action_noise_dim: int = 32
-    dsrl_num_q_heads: int = 10
-    dsrl_image_latent_dim: int = 64
-    dsrl_state_latent_dim: int = 64
-    dsrl_hidden_dims: tuple = field(
-        default_factory=lambda: (128, 128, 128)
-    )
 
 
 class OpenPi0ForRL(PI0Pytorch, BaseModel):
-    """
-    Pi0 model for reinforcement learning.
-    """
 
-    config: OpenPi0Config
+    config: OpenPi0RLConfig
 
     @property
     def _no_split_modules(self) -> list[str]:
@@ -124,7 +111,7 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
 
     def __init__(
         self,
-        config: OpenPi0Config,
+        config: OpenPi0RLConfig,
     ):
         # Override `sample_actions` to prevent parent class polymorphic call
         sample_actions_func = self.sample_actions
@@ -168,56 +155,6 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
                 noise_logvar_range=self.config.noise_logvar_range,
                 noise_scheduler_type="learn",
             )
-
-        # DSRL components
-        if self.config.use_dsrl:
-            from vlarlkit.models.modules.compact_encoders import (
-                CompactMultiQHead,
-                CompactStateEncoder,
-                LightweightImageEncoder64,
-            )
-            from vlarlkit.models.modules.gaussian_policy import GaussianPolicy
-
-            _dsrl_dtype = torch.bfloat16
-            dsrl_input_dim = (
-                self.config.dsrl_state_latent_dim + self.config.dsrl_image_latent_dim
-            )
-
-            self.dsrl_action_noise_net = GaussianPolicy(
-                input_dim=dsrl_input_dim,
-                output_dim=self.config.dsrl_action_noise_dim,
-                hidden_dims=self.config.dsrl_hidden_dims,
-                low=None,
-                high=None,
-                action_horizon=self.config.action_horizon,
-            ).to(dtype=_dsrl_dtype)
-
-            self.actor_image_encoder = LightweightImageEncoder64(
-                num_images=1,
-                latent_dim=self.config.dsrl_image_latent_dim,
-                image_size=64,
-            ).to(dtype=_dsrl_dtype)
-            self.actor_state_encoder = CompactStateEncoder(
-                state_dim=self.config.dsrl_state_dim,
-                hidden_dim=self.config.dsrl_state_latent_dim,
-            ).to(dtype=_dsrl_dtype)
-            self.critic_image_encoder = LightweightImageEncoder64(
-                num_images=1,
-                latent_dim=self.config.dsrl_image_latent_dim,
-                image_size=64,
-            ).to(dtype=_dsrl_dtype)
-            self.critic_state_encoder = CompactStateEncoder(
-                state_dim=self.config.dsrl_state_dim,
-                hidden_dim=self.config.dsrl_state_latent_dim,
-            ).to(dtype=_dsrl_dtype)
-            self.q_head = CompactMultiQHead(
-                state_dim=self.config.dsrl_state_latent_dim,
-                image_dim=self.config.dsrl_image_latent_dim,
-                action_dim=self.config.dsrl_action_noise_dim,
-                hidden_dims=self.config.dsrl_hidden_dims,
-                num_q_heads=self.config.dsrl_num_q_heads,
-                output_dim=1,
-            ).to(dtype=_dsrl_dtype)
 
         for name, module in self.named_modules():
             # Set _fsdp_wrap_name to the last part of the path (e.g., "model.action_in_proj" -> "action_in_proj")
@@ -301,10 +238,6 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
             return self.sft_forward(**kwargs)
         elif forward_type == ForwardType.DEFAULT:
             return self.default_forward(**kwargs)
-        elif forward_type == ForwardType.SAC:
-            return self.sac_forward(**kwargs)
-        elif forward_type == ForwardType.SAC_Q:
-            return self.sac_q_forward(**kwargs)
         else:
             raise NotImplementedError
 
@@ -413,60 +346,31 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
         processed_obs = self.precision_processor(processed_obs)
         observation = _model.Observation.from_dict(processed_obs)
 
-        if self.config.use_dsrl:
-            # --- DSRL mode ---
-            # Step 1: SAC agent outputs noise
-            dsrl_obs = {"images": [env_obs["main_images"]], "states": env_obs["states"]}
-            noise_actions, noise_logprob, _ = self.sac_forward(
-                obs=dsrl_obs, train=False, mode=mode
-            )
+        outputs = self.sample_actions(
+            observation, mode=mode, compute_values=compute_values
+        )
+        actions = self.output_transform(
+            {"actions": outputs["actions"], "state": observation.state}
+        )["actions"].numpy()
 
-            # Step 2: Use noise to steer frozen Pi0 diffusion
-            outputs = self.sample_actions(
-                observation, noise=noise_actions, mode="eval",
-                compute_values=compute_values,
-            )
+        forward_inputs = {
+            "chains": outputs["chains"],
+            "denoise_inds": outputs["denoise_inds"],
+            "observation/image": env_obs["main_images"],
+            "observation/state": env_obs["states"],
+            "tokenized_prompt": processed_obs["tokenized_prompt"],
+            "tokenized_prompt_mask": processed_obs["tokenized_prompt_mask"],
+        }
+        if env_obs["wrist_images"] is not None:
+            forward_inputs["observation/wrist_image"] = env_obs["wrist_images"]
+        forward_inputs.update(to_process_obs)
+        forward_inputs.pop("prompt", None)
 
-            # Step 3: Extract real actions for env
-            actions = self.output_transform(
-                {"actions": outputs["actions"], "state": observation.state}
-            )["actions"].numpy()
-
-            forward_inputs = {
-                "action": noise_actions,  # noise for SAC training
-            }
-            result = {
-                "prev_logprobs": noise_logprob,
-                "prev_values": outputs.get("prev_values"),
-                "forward_inputs": forward_inputs,
-            }
-        else:
-            # --- Standard mode ---
-            outputs = self.sample_actions(
-                observation, mode=mode, compute_values=compute_values
-            )
-            actions = self.output_transform(
-                {"actions": outputs["actions"], "state": observation.state}
-            )["actions"].numpy()
-
-            forward_inputs = {
-                "chains": outputs["chains"],
-                "denoise_inds": outputs["denoise_inds"],
-                "observation/image": env_obs["main_images"],
-                "observation/state": env_obs["states"],
-                "tokenized_prompt": processed_obs["tokenized_prompt"],
-                "tokenized_prompt_mask": processed_obs["tokenized_prompt_mask"],
-            }
-            if env_obs["wrist_images"] is not None:
-                forward_inputs["observation/wrist_image"] = env_obs["wrist_images"]
-            forward_inputs.update(to_process_obs)
-            forward_inputs.pop("prompt", None)
-
-            result = {
-                "prev_logprobs": outputs["prev_logprobs"],
-                "prev_values": outputs["prev_values"],
-                "forward_inputs": forward_inputs,
-            }
+        result = {
+            "prev_logprobs": outputs["prev_logprobs"],
+            "prev_values": outputs["prev_values"],
+            "forward_inputs": forward_inputs,
+        }
         return actions, result
 
     @torch.no_grad()
@@ -484,9 +388,6 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
         if noise is None:
             actions_shape = (bsize, self.config.action_horizon, self.config.action_dim)
             noise = self.sample_noise(actions_shape, device)
-        else:
-            # DSRL: SAC provides noise, convert dtype to match action_in_proj
-            noise = noise.to(self.action_in_proj.weight.dtype)
 
         images, img_masks, lang_tokens, lang_masks, state = (
             self._preprocess_observation(observation, train=False)
@@ -885,153 +786,3 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
             self.paligemma_with_expert.paligemma.eval()
             for params in self.paligemma_with_expert.paligemma.parameters():
                 params.requires_grad = False
-
-            if self.config.use_dsrl:
-                # DSRL: also freeze gemma_expert and projection layers
-                self.paligemma_with_expert.gemma_expert.eval()
-                for params in self.paligemma_with_expert.gemma_expert.parameters():
-                    params.requires_grad = False
-
-                if self.pi05:
-                    projection_names = [
-                        "action_in_proj", "action_out_proj",
-                        "time_mlp_in", "time_mlp_out",
-                    ]
-                else:
-                    projection_names = [
-                        "action_in_proj", "action_out_proj",
-                        "state_proj", "action_time_mlp",
-                    ]
-                for name, param in self.named_parameters():
-                    if any(proj_name in name for proj_name in projection_names):
-                        param.requires_grad = False
-
-    # --- DSRL methods ---
-
-    def sac_forward(self, obs=None, train=False, **kwargs):
-        """SAC forward: obs -> DSRL encoders -> GaussianPolicy -> noise_actions.
-
-        Args:
-            obs: {"images": list of tensors, "states": tensor} or
-                 {"main_images": tensor, "states": tensor}
-            train: whether to apply data augmentation (unused for now)
-        Returns:
-            (noise_actions [B, action_horizon, noise_dim], log_probs [B], None)
-        """
-        if obs is None:
-            obs = kwargs.get("obs", {})
-
-        # Normalize obs format
-        if "images" not in obs:
-            if "main_images" in obs:
-                obs = {"images": [obs["main_images"]], "states": obs["states"]}
-            else:
-                raise ValueError(f"Invalid obs format: {obs.keys()}")
-
-        images = self._preprocess_dsrl_images(obs["images"], train=train)
-        states = self._preprocess_states(obs["states"])
-
-        device = next(self.actor_image_encoder.parameters()).device
-        images = images.to(device=device, dtype=torch.bfloat16)
-        states = states.to(device=device, dtype=torch.bfloat16)
-
-        image_features = self.actor_image_encoder(images)
-        state_features = self.actor_state_encoder(states)
-        features = torch.cat([state_features, image_features], dim=-1)
-
-        mode = kwargs.get("mode", "train")
-        deterministic = mode == "eval"
-        action_noise, logprobs = self.dsrl_action_noise_net.sample(
-            features, deterministic=deterministic
-        )
-
-        return action_noise, logprobs, None
-
-    def sac_q_forward(self, obs=None, actions=None, detach_encoder=False, train=False, **kwargs):
-        """Q-value forward: obs + actions -> critic encoders -> Q-head -> q_values.
-
-        Args:
-            obs: observation dict (same formats as sac_forward)
-            actions: [B, action_dim] or [B, action_horizon, action_dim]
-            detach_encoder: detach encoder gradients for actor update
-        Returns:
-            q_values: [B, num_q_heads]
-        """
-        if obs is None:
-            obs = kwargs.get("obs", {})
-        if actions is None:
-            actions = kwargs.get("actions")
-
-        if "images" not in obs:
-            if "main_images" in obs:
-                obs = {"images": [obs["main_images"]], "states": obs["states"]}
-            else:
-                raise ValueError(f"Invalid obs format: {obs.keys()}")
-
-        images = self._preprocess_dsrl_images(obs["images"], train=train)
-        states = self._preprocess_states(obs["states"])
-
-        device = next(self.critic_image_encoder.parameters()).device
-        images = images.to(device=device, dtype=torch.bfloat16)
-        states = states.to(device=device, dtype=torch.bfloat16)
-        actions = actions.to(device=device, dtype=torch.bfloat16)
-
-        image_features = self.critic_image_encoder(images)
-        state_features = self.critic_state_encoder(states)
-
-        if detach_encoder:
-            image_features = image_features.detach()
-            state_features = state_features.detach()
-
-        if actions.dim() == 3:
-            actions = actions[:, 0, :]
-
-        q_values = self.q_head(state_features, image_features, actions)
-        return q_values
-
-    def _preprocess_dsrl_images(self, images, train=False):
-        """Resize images to 64x64 for DSRL encoders.
-
-        Args:
-            images: list of [B, H, W, C] or [B, C, H, W] tensors
-        Returns:
-            [B, 1, C, 64, 64] in [-1, 1] range
-        """
-        import torch.nn.functional as F
-
-        agentview_img = images[0] if isinstance(images, list) else images
-
-        if not isinstance(agentview_img, torch.Tensor):
-            agentview_img = torch.from_numpy(agentview_img)
-
-        # NHWC -> NCHW
-        if agentview_img.shape[-1] == 3:
-            agentview_img = agentview_img.permute(0, 3, 1, 2)
-
-        # Normalize to [0, 1]
-        if agentview_img.dtype == torch.uint8:
-            agentview_img = agentview_img.float() / 255.0
-        else:
-            if agentview_img.min() < 0:
-                agentview_img = (agentview_img + 1.0) / 2.0
-        agentview_img = agentview_img.clamp(0.0, 1.0)
-
-        resized_img = F.interpolate(
-            agentview_img, size=(64, 64), mode="bilinear", align_corners=False,
-        )
-
-        # [0, 1] -> [-1, 1]
-        resized_img = resized_img * 2.0 - 1.0
-        # [B, C, 64, 64] -> [B, 1, C, 64, 64]
-        resized_img = resized_img.unsqueeze(1)
-        return resized_img
-
-    def _preprocess_states(self, states):
-        """Flatten and convert states to bfloat16."""
-        if not isinstance(states, torch.Tensor):
-            states = torch.from_numpy(states)
-        if states.dim() > 2:
-            states = states.reshape(states.shape[0], -1)
-        if states.dtype != torch.bfloat16:
-            states = states.to(torch.bfloat16)
-        return states

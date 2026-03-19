@@ -15,7 +15,7 @@ class Rollout:
         self.rollout_result = rollout_result
         self.mode = mode
         self._auto_reset = self.cfg.env[self.mode].auto_reset
-        self._use_dsrl = bool(self.cfg.model.get("openpi", {}).get("use_dsrl", False))
+        self._use_dsrl = self.cfg.model.get("openpi", {}).get("model_class_name", "") == "OpenPi0ForDSRL"
 
         self.init_rollout()
 

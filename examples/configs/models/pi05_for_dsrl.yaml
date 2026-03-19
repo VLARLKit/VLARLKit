@@ -12,25 +12,26 @@ action_dim: 7
 # Training settings
 use_proprio: True
 num_steps: 5
-add_value_head: True
 
 # openpi specific parameters
 openpi:
-  model_class_name: "OpenPi0ForRL"
+  model_class_name: "OpenPi0ForDSRL"
   pi05: True
   config_name: "pi05_libero"
   num_images_in_input: 2
-  noise_level: 0.5
   action_chunk: ${model.num_action_chunks}
   num_steps: ${model.num_steps}
   train_expert_only: True
   action_env_dim: ${model.action_dim}
-  noise_method: "flow_sde"
-  add_value_head: ${model.add_value_head}
-  value_after_vlm: True
-  value_vlm_mode: "mean_token"
-  detach_critic_input: null
   discrete_state_input: False
+  # DSRL-specific
+  dsrl_state_dim: 8
+  dsrl_action_noise_dim: 32
+  dsrl_num_q_heads: 10
+  dsrl_image_latent_dim: 64
+  dsrl_state_latent_dim: 64
+  dsrl_hidden_dims: [128, 128, 128]
+  dsrl_action_magnitude: 1.0
 
 data:
   name: "libero"

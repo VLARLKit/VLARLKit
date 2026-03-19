@@ -31,39 +31,12 @@ class ForwardType(Enum):
 
 
 class BaseModel(ABC):
-    """
-    Base interface for all models.
-
-    Subclasses must implement:
-        - forward
-        - default_forward
-        - predict_action_batch
-
-    Optional overrides:
-        - sft_forward
-        - sac_forward
-        - sac_q_forward
-        - crossq_forward
-        - crossq_q_forward
-    """
 
     def forward(self, forward_type=ForwardType.DEFAULT, **kwargs):
         if forward_type == ForwardType.DEFAULT:
             return self.default_forward(**kwargs)
         else:
             raise NotImplementedError
-
-    def sac_forward(self, **kwargs):
-        raise NotImplementedError
-
-    def sac_q_forward(self, **kwargs):
-        raise NotImplementedError
-
-    def crossq_forward(self, **kwargs):
-        raise NotImplementedError
-
-    def crossq_q_forward(self, **kwargs):
-        raise NotImplementedError
 
     @abstractmethod
     def default_forward(self, **kwargs):
