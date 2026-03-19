@@ -35,7 +35,7 @@ class PPOPolicy:
         self._global_step = 0
 
     def _setup_optimizer(self) -> None:
-        value_lr = float(self._optim_cfg.get("value_lr"))
+        value_lr = self._optim_cfg.get("value_lr")
         lr = float(self._optim_cfg.get("lr"))
         beta1 = float(self._optim_cfg.get("adam_beta1", 0.9))
         beta2 = float(self._optim_cfg.get("adam_beta2", 0.999))
@@ -44,41 +44,42 @@ class PPOPolicy:
 
         if value_lr is not None:
             value_lr = float(value_lr)
-            inner = self.model.module if hasattr(self.model, "module") else self.model
+            actor_params = []
             value_params = []
-            other_params = []
-            for n, p in inner.named_parameters():
-                if not p.requires_grad:
+            for name, param in self.model.named_parameters():
+                if not param.requires_grad:
                     continue
-                if "value_head" in n:
-                    value_params.append(p)
+                if "value_head" in name:
+                    value_params.append(param)
                 else:
-                    other_params.append(p)
+                    actor_params.append(param)
+
             if value_params:
                 param_groups = [
-                    {"params": other_params, "lr": lr},
+                    {"params": actor_params, "lr": lr},
                     {"params": value_params, "lr": value_lr},
                 ]
                 self._optimizer = torch.optim.AdamW(
                     param_groups, betas=(beta1, beta2), eps=eps, weight_decay=weight_decay
                 )
+                if self.rank == 0:
+                    n_actor = sum(p.numel() for p in actor_params)
+                    n_value = sum(p.numel() for p in value_params)
+                    logger.info(
+                        f"Optimizer: actor params={n_actor:,} (lr={lr}), "
+                        f"value params={n_value:,} (lr={value_lr})"
+                    )
             else:
+                if self.rank == 0:
+                    logger.warning("value_lr set but no 'value_head' params found, using single lr")
                 params = [p for p in self.model.parameters() if p.requires_grad]
                 self._optimizer = torch.optim.AdamW(
-                    params,
-                    lr=lr,
-                    betas=(beta1, beta2),
-                    eps=eps,
-                    weight_decay=weight_decay,
+                    params, lr=lr, betas=(beta1, beta2), eps=eps, weight_decay=weight_decay,
                 )
         else:
             params = [p for p in self.model.parameters() if p.requires_grad]
             self._optimizer = torch.optim.AdamW(
-                params,
-                lr=lr,
-                betas=(beta1, beta2),
-                eps=eps,
-                weight_decay=weight_decay,
+                params, lr=lr, betas=(beta1, beta2), eps=eps, weight_decay=weight_decay,
             )
 
         n_optim = sum(p.numel() for group in self._optimizer.param_groups for p in group["params"])
