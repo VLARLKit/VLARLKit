@@ -101,7 +101,7 @@ class OnPolicyRunner:
                     {"adv": rr.advantages}, self.device, mask=mask,
                 )
                 mean, std = stats["adv"]
-                rr.norm_adv(mean, std + 1e-8)
+                rr.norm_adv(mean, std + 1e-5)
 
             # Update policy
             batch = rr.get_batch(compute_loss_masks=compute_loss_masks, episode_len=episode_len)
