@@ -181,6 +181,9 @@ class PPOPolicy:
         total_value_loss = 0.0
         total_entropy = 0.0
         total_value_mean = 0.0
+        total_ratio = 0.0
+        total_clip_fraction = 0.0
+        total_value_clip_fraction = 0.0
         num_minibatches = 0
 
         for _ in range(update_epochs):
@@ -221,6 +224,7 @@ class PPOPolicy:
                     ratio, 1.0 - clip_ratio_low, 1.0 + clip_ratio_high
                 )
                 per_sample_policy_loss = torch.max(policy_loss1, policy_loss2)
+                clip_mask = (policy_loss1 < policy_loss2).detach()
 
                 if clip_ratio_c > 1.0:
                     dual_clip_bound = clip_ratio_c * torch.abs(mb_advantages)
@@ -247,8 +251,10 @@ class PPOPolicy:
                         _value_loss(values - mb_returns),
                         _value_loss(values_clipped - mb_returns),
                     )
+                    value_clip_mask = ((values - mb_prev_values).abs() > value_clip).detach()
                 else:
                     per_sample_value_loss = _value_loss(values - mb_returns)
+                    value_clip_mask = torch.zeros_like(values, dtype=torch.bool)
 
                 per_sample_entropy = entropy.reshape(-1)
 
@@ -294,6 +300,15 @@ class PPOPolicy:
                 total_value_loss += value_loss.detach().item()
                 total_entropy += entropy_val.detach().item()
                 total_value_mean += value_mean.item()
+                if mb_mask is not None:
+                    mask_count = mb_mask.sum().clamp(min=1)
+                    total_ratio += (ratio.detach() * mb_mask).sum().item() / mask_count.item()
+                    total_clip_fraction += (clip_mask.float() * mb_mask).sum().item() / mask_count.item()
+                    total_value_clip_fraction += (value_clip_mask.float() * mb_mask).sum().item() / mask_count.item()
+                else:
+                    total_ratio += ratio.detach().mean().item()
+                    total_clip_fraction += clip_mask.float().mean().item()
+                    total_value_clip_fraction += value_clip_mask.float().mean().item()
                 num_minibatches += 1
 
         if critic_warmup and self.rank == 0:
@@ -310,4 +325,7 @@ class PPOPolicy:
             "value_loss": total_value_loss / n,
             "entropy": total_entropy / n,
             "value_mean": total_value_mean / n,
+            "ratio": total_ratio / n,
+            "clip_fraction": total_clip_fraction / n,
+            "value_clip_fraction": total_value_clip_fraction / n,
         }
