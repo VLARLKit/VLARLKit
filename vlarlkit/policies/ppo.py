@@ -32,6 +32,7 @@ class PPOPolicy:
         self._setup_lr_scheduler()
 
         self._clip_grad = float(self._optim_cfg.get("clip_grad", 0.0))
+        self._critic_warmup_steps = int(self._algo_cfg.get("critic_warmup_steps", 0))
         self._global_step = 0
 
     def _setup_optimizer(self) -> None:
@@ -157,6 +158,7 @@ class PPOPolicy:
         value_clip = float(self._algo_cfg.get("value_clip", 0.2))
         huber_delta = float(self._algo_cfg.get("huber_delta", 10.0))
         entropy_bonus = float(self._algo_cfg.get("entropy_bonus", 0.0))
+        critic_warmup = self._global_step < self._critic_warmup_steps
 
         advantages = batch["advantages"] # (batch_size,)
         prev_logprobs = batch["prev_logprobs"] # (batch_size, action_chunk, action_dim)
@@ -268,9 +270,12 @@ class PPOPolicy:
                     entropy_val = per_sample_entropy.mean()
                     value_mean = values.detach().mean()
 
-                loss = policy_loss + value_loss
-                if entropy_bonus != 0:
-                    loss = loss - entropy_bonus * entropy_val
+                if critic_warmup:
+                    loss = value_loss
+                else:
+                    loss = policy_loss + value_loss
+                    if entropy_bonus != 0:
+                        loss = loss - entropy_bonus * entropy_val
 
                 accum_step += 1
                 should_sync = (accum_step == gradient_accumulation_steps) or (end >= N)
@@ -290,6 +295,9 @@ class PPOPolicy:
                 total_entropy += entropy_val.detach().item()
                 total_value_mean += value_mean.item()
                 num_minibatches += 1
+
+        if critic_warmup and self.rank == 0:
+            logger.info("Critic warmup step %d/%d (policy loss zeroed)", self._global_step + 1, self._critic_warmup_steps)
 
         if self._lr_scheduler is not None:
             self._lr_scheduler.step()
