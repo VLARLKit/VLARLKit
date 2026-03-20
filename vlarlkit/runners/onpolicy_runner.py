@@ -3,6 +3,7 @@ import logging
 import time
 from typing import Any
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from omegaconf import DictConfig
@@ -178,6 +179,12 @@ class OnPolicyRunner:
             "episode_len": rollout_result["episode_len"],
         }, self.device)
 
+        # Gather per-task stats across all ranks
+        task_ids = rollout_result.get("task_id")
+        per_task_metrics = self._gather_per_task_stats(
+            rollout_result["success_once"], task_ids,
+        ) if task_ids is not None else None
+
         if self.rank == 0:
             eval_metrics = {
                 "eval/success_rate_mean": stats["success"][0],
@@ -189,6 +196,47 @@ class OnPolicyRunner:
                 f"{k}={v:.4f}" for k, v in eval_metrics.items()
             )
             logger.info("Eval metrics: %s", eval_metrics_str)
+
+            if per_task_metrics is not None:
+                lines = ["Per-task eval results:"]
+                for tid in sorted(per_task_metrics.keys()):
+                    sr, count = per_task_metrics[tid]
+                    lines.append(f"  task {tid}: success_rate={sr:.4f}, n={count}")
+                    eval_metrics[f"eval/task_{tid}_success_rate"] = sr
+                logger.info("\n".join(lines))
+
             return eval_metrics
 
         return None
+
+    def _gather_per_task_stats(
+        self,
+        success: np.ndarray,
+        task_ids: np.ndarray,
+    ) -> dict[int, tuple[float, int]] | None:
+        """Gather success/task_id from all ranks and compute per-task success rate.
+
+        Returns:
+            On rank 0: dict mapping task_id -> (success_rate, count).
+            On other ranks: None.
+        """
+        local_success = torch.from_numpy(success.astype(np.float32)).to(self.device)
+        local_task_ids = torch.from_numpy(task_ids.astype(np.int64)).to(self.device)
+
+        # Each rank has the same number of episodes (eval_rollout_epochs * num_envs)
+        gathered_success = [torch.zeros_like(local_success) for _ in range(self.world_size)]
+        gathered_task_ids = [torch.zeros_like(local_task_ids) for _ in range(self.world_size)]
+        dist.all_gather(gathered_success, local_success)
+        dist.all_gather(gathered_task_ids, local_task_ids)
+
+        if self.rank != 0:
+            return None
+
+        all_success = torch.cat(gathered_success).cpu().numpy()
+        all_task_ids = torch.cat(gathered_task_ids).cpu().numpy()
+
+        result: dict[int, tuple[float, int]] = {}
+        for tid in np.unique(all_task_ids):
+            mask = all_task_ids == tid
+            result[int(tid)] = (float(all_success[mask].mean()), int(mask.sum()))
+        return result

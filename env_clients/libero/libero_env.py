@@ -247,6 +247,7 @@ class LiberoEnv(gym.Env):
         episode_info["return"] = self.returns.copy()
         episode_info["episode_len"] = self.elapsed_steps.copy()
         episode_info["reward"] = episode_info["return"] / episode_info["episode_len"]
+        episode_info["task_id"] = self.task_ids.copy()
         infos["episode"] = episode_info
         return infos
 
