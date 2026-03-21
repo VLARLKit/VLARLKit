@@ -53,22 +53,12 @@ class OnPolicyRunner:
         gae_lambda = float(self.cfg.algorithm.gae_lambda)
         normalize_advantages = self.cfg.algorithm.get("normalize_advantages", True)
         train_env_cfg = self.cfg.env.train
-        compute_loss_masks = (
-            not train_env_cfg.auto_reset and
-            not train_env_cfg.ignore_terminations
-        )
-        max_steps = int(train_env_cfg.max_steps_per_rollout)
+        max_steps = int(train_env_cfg.max_episode_steps)
         num_action_chunks = int(self.cfg.model.num_action_chunks)
         episode_len = max_steps // num_action_chunks
-
-        if not train_env_cfg.auto_reset:
-            max_ep = int(train_env_cfg.max_episode_steps)
-            assert max_steps == max_ep, (
-                f"max_steps_per_rollout ({max_steps}) != max_episode_steps ({max_ep})"
-            )
-            assert max_steps % num_action_chunks == 0, (
-                f"max_steps_per_rollout ({max_steps}) % num_action_chunks ({num_action_chunks}) != 0"
-            )
+        assert max_steps % num_action_chunks == 0, (
+            f"max_episode_steps ({max_steps}) must be divisible by num_action_chunks ({num_action_chunks})"
+        )
 
         if self.rank == 0:
             logger.info("Starting training for %d epochs", max_epochs)
@@ -97,7 +87,7 @@ class OnPolicyRunner:
             )
 
             if normalize_advantages:
-                mask, _ = rr.compute_loss_mask(episode_len=episode_len) if compute_loss_masks else (None, None)
+                mask, _ = rr.compute_loss_mask(episode_len=episode_len)
                 stats = allreduce_mean_std(
                     {"adv": rr.advantages}, self.device, mask=mask,
                 )
@@ -105,7 +95,7 @@ class OnPolicyRunner:
                 rr.norm_adv(mean, std + 1e-5)
 
             # Update policy
-            batch = rr.get_batch(compute_loss_masks=compute_loss_masks, episode_len=episode_len)
+            batch = rr.get_batch(compute_loss_masks=True, episode_len=episode_len)
 
             batch_stats = allreduce_mean({
                 "adv_mean": batch["advantages"].mean().item(),

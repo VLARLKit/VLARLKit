@@ -16,18 +16,6 @@ from vlarlkit.utils.fsdp_utils import allreduce_mean_std, sync_fsdp_to_model
 
 logger = logging.getLogger("vlarlkit.runner")
 
-_REPLAY_PREFIXES = ("obs/", "next_obs/")
-_REPLAY_KEYS = {"actions", "rewards", "terminations"}
-
-
-def _filter_replay_keys(batch: dict) -> dict:
-    """Keep only the keys needed by the replay buffer."""
-    return {
-        k: v for k, v in batch.items()
-        if k in _REPLAY_KEYS or any(k.startswith(p) for p in _REPLAY_PREFIXES)
-    }
-
-
 class OffPolicyRunner:
     """
     Off-policy async RL runner: rollout and update run in separate threads,
@@ -95,12 +83,18 @@ class OffPolicyRunner:
 
     def _rollout_loop(self) -> None:
         """Daemon thread: continuously collects rollouts and enqueues transitions."""
+        num_chunk_steps = (
+            self.cfg.env.train.max_episode_steps
+            // self.cfg.model.num_action_chunks
+        )
         try:
             self.train_rollout_worker.init_rollout()
             while not self._should_stop.is_set():
                 rollout_info = self.train_rollout_worker.rollout_one_epoch()
                 rr = self.train_rollout_worker.rollout_result
-                transitions = rr.get_batch()
+                transitions = rr.get_batch(
+                    compute_loss_masks=True, episode_len=num_chunk_steps
+                )
                 transitions["rollout_info"] = rollout_info
                 rr.clear()
                 self._queue_put(transitions)
@@ -162,9 +156,9 @@ class OffPolicyRunner:
                 break
 
             rollout_info = data.pop("rollout_info")
-            filtered = _filter_replay_keys(data)
-            new_samples = next(iter(filtered.values())).shape[0]
-            self.replay_buffer.add(filtered)
+            replay_data = self.policy.process_batch_for_replay(data)
+            new_samples = next(iter(replay_data.values())).shape[0]
+            self.replay_buffer.add(replay_data)
             rollout_stats = allreduce_mean_std({
                 "success_rate": rollout_info["success_once"].astype(float),
             }, self.device)

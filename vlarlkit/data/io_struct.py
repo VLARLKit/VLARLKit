@@ -22,6 +22,7 @@ class RolloutResult:
     prev_logprobs: list[np.ndarray] = field(default_factory=list)
     prev_values: list[np.ndarray] = field(default_factory=list)
     forward_inputs: list[dict[str, Any]] = field(default_factory=list)
+    next_forward_inputs: list[dict[str, Any]] = field(default_factory=list)
 
     returns: np.ndarray | None = field(default=None, repr=False)
     advantages: np.ndarray | None = field(default=None, repr=False)
@@ -37,6 +38,7 @@ class RolloutResult:
         self.prev_logprobs.clear()
         self.prev_values.clear()
         self.forward_inputs.clear()
+        self.next_forward_inputs.clear()
         self.returns = None
         self.advantages = None
 
@@ -64,6 +66,14 @@ class RolloutResult:
             self.prev_values.append(to_numpy(prev_values))
         if forward_inputs is not None:
             self.forward_inputs.append(to_numpy(forward_inputs))
+
+    def build_next_forward_inputs(self):
+        """Pure temporal shift: next_fi[t] = fi[t+1]. Requires len(forward_inputs) == T+1."""
+        T = len(self.obs)
+        assert len(self.forward_inputs) == T + 1, (
+            f"Expected {T + 1} forward_inputs, got {len(self.forward_inputs)}"
+        )
+        self.next_forward_inputs = [self.forward_inputs[t + 1] for t in range(T)]
 
     def compute_returns_and_advantages(
         self,
@@ -178,9 +188,19 @@ class RolloutResult:
                 batch[name] = _stack_and_flatten(data_list)
 
         if self.forward_inputs:
-            keys = self.forward_inputs[0].keys()
+            # forward_inputs may have T+1 entries (extra for last next_obs);
+            # only include the first T for the batch
+            fi_list = self.forward_inputs[:len(self.obs)] if len(self.forward_inputs) > len(self.obs) else self.forward_inputs
+            keys = fi_list[0].keys()
             batch["forward_inputs"] = {
-                k: _stack_and_flatten([d[k] for d in self.forward_inputs])
+                k: _stack_and_flatten([d[k] for d in fi_list])
+                for k in keys
+            }
+
+        if self.next_forward_inputs:
+            keys = self.next_forward_inputs[0].keys()
+            batch["next_forward_inputs"] = {
+                k: _stack_and_flatten([d[k] for d in self.next_forward_inputs])
                 for k in keys
             }
 

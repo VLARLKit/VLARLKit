@@ -15,7 +15,7 @@ from vlarlkit.utils.checkpoint import load_checkpoint
 from vlarlkit.utils.fsdp_utils import sync_fsdp_to_model
 from vlarlkit.utils.remote_env import RemoteEnv
 from vlarlkit.models.openpi import get_model
-from vlarlkit.policies import DSRLPolicy
+from vlarlkit.policies import get_offpolicy_policy
 from vlarlkit.rollouts import Rollout
 from vlarlkit.runners import OffPolicyRunner
 
@@ -52,7 +52,7 @@ def main(cfg: DictConfig) -> None:
     model = get_model(cfg.model)
     target_model = get_model(cfg.model)
 
-    policy = DSRLPolicy(cfg, model, target_model, rank)
+    policy = get_offpolicy_policy(cfg, model, target_model, rank)
 
     # Initialize replay buffer
     world_size = dist.get_world_size()
@@ -70,7 +70,8 @@ def main(cfg: DictConfig) -> None:
     actor_model = get_model(cfg.model)
     actor_model.to(f"cuda:{rank}")
     train_rollout_result = RolloutResult()
-    train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train")
+    train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train",
+                                    compute_next_forward_inputs=True)
     eval_rollout_worker = Rollout(cfg, eval_env, actor_model, mode="eval")
 
     # Load checkpoint if resuming

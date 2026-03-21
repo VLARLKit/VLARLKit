@@ -8,6 +8,8 @@ hydra:
     dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
 
 algorithm:
+  policy_class: dsrl
+
   # SAC hyperparameters
   gamma: 0.999
   tau: 0.005
@@ -27,7 +29,6 @@ algorithm:
   global_batch_size: 512 # global_bs = (micro_bs * gradient_accumulation_steps) * world_size
   micro_batch_size: 64 # bs per rank & per forward pass
   queue_size: 4
-  train_actor_steps: 10
 
   # Rollout
   rollout_epochs: 1
@@ -39,10 +40,7 @@ env:
   train:
     seed: ${runner.seed}
     total_num_envs: 8
-    auto_reset: True
-    ignore_terminations: False
     max_episode_steps: 240
-    max_steps_per_rollout: 240
     reward_coef: 1.0
     use_rel_reward: False
     use_step_penalty: True
@@ -51,10 +49,7 @@ env:
   eval:
     seed: ${runner.seed}
     total_num_envs: 10
-    auto_reset: True
-    ignore_terminations: True
     max_episode_steps: 240
-    max_steps_per_rollout: 240
     group_size: 1
     is_eval: True
     use_step_penalty: True
