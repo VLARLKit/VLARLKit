@@ -206,11 +206,11 @@ class OffPolicyRunner:
             if self.rank == 0:
                 epoch_log.update({f"train/{k}": v for k, v in train_metrics.items()})
                 epoch_log["rollout/success_rate"] = rollout_stats["success_rate"][0]
-                metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in train_metrics.items())
+                train_metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in train_metrics.items())
                 logger.info(
-                    "Epoch %d/%d - %s (%d updates, %.2fs)",
-                    epoch, max_epochs, metrics_str,
-                    num_updates, update_end - update_start,
+                    "Epoch %d/%d - success_rate=%.4f, Train: %s (%d updates, %.2fs)",
+                    epoch, max_epochs, rollout_stats["success_rate"][0],
+                    train_metrics_str, num_updates, update_end - update_start,
                 )
 
             # Eval
