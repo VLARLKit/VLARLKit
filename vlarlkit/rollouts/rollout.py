@@ -66,6 +66,9 @@ class Rollout:
         # Update reset state ids for next epoch rollouts
         self.env.update_reset_state_ids()
 
+        # After auto_reset, episode info moves into final_info
+        if "final_info" in env_info:
+            return env_info["final_info"]["episode"]
         return env_info["episode"]
 
     def run_rollout(self, rollout_epochs: int):
