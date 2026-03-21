@@ -18,28 +18,12 @@
 # --------------------------------------------------------------------
 
 from abc import ABC, abstractmethod
-from enum import Enum
-
-
-class ForwardType(Enum):
-    DEFAULT = "default"
-    SFT = "sft"
-    SAC = "sac"
-    SAC_Q = "sac_q"
-    CROSSQ = "crossq"
-    CROSSQ_Q = "crossq_q"
 
 
 class BaseModel(ABC):
 
-    def forward(self, forward_type=ForwardType.DEFAULT, **kwargs):
-        if forward_type == ForwardType.DEFAULT:
-            return self.default_forward(**kwargs)
-        else:
-            raise NotImplementedError
-
     @abstractmethod
-    def default_forward(self, **kwargs):
+    def forward(self, **kwargs):
         raise NotImplementedError
 
     @abstractmethod

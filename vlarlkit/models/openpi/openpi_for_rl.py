@@ -31,7 +31,7 @@ from openpi.models import model as _model
 from openpi.models.pi0_config import Pi0Config
 from openpi.models_pytorch.pi0_pytorch import PI0Pytorch, make_att_2d_masks
 
-from vlarlkit.models.base import BaseModel, ForwardType
+from vlarlkit.models.base import BaseModel
 from vlarlkit.models.modules.explore_noise_net import ExploreNoiseNet
 from vlarlkit.models.modules.value_head import ValueHead
 
@@ -233,13 +233,8 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
         outputs["actions"] = outputs["actions"][:, : self.config.action_chunk]
         return outputs
 
-    def forward(self, forward_type=ForwardType.DEFAULT, **kwargs):
-        if forward_type == ForwardType.SFT:
-            return self.sft_forward(**kwargs)
-        elif forward_type == ForwardType.DEFAULT:
-            return self.default_forward(**kwargs)
-        else:
-            raise NotImplementedError
+    def forward(self, **kwargs):
+        return self.default_forward(**kwargs)
 
     def sft_forward(self, data, **kwargs):
         observation = data["observation"]
