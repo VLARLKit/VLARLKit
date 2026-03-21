@@ -12,7 +12,7 @@ from omegaconf import DictConfig
 from vlarlkit.data.replay_buffer import ReplayBuffer
 from vlarlkit.rollouts.rollout import Rollout
 from vlarlkit.utils.checkpoint import save_checkpoint
-from vlarlkit.utils.fsdp_utils import allreduce_mean_std, sync_fsdp_to_model
+from vlarlkit.utils.fsdp_utils import allreduce_mean, allreduce_mean_std, sync_fsdp_to_model
 
 logger = logging.getLogger("vlarlkit.runner")
 
@@ -176,12 +176,22 @@ class OffPolicyRunner:
                 if self.rank == 0:
                     logger.info("All ranks warmed up, starting training")
 
-            # Update policy
-            num_updates = max(1, int(utd_ratio * new_samples))
+            # Update policy — sync num_updates across ranks to prevent
+            # FSDP collective deadlock (new_samples may differ per rank).
+            num_updates = max(1, int(utd_ratio * new_samples * self.world_size))
+            num_updates_t = torch.tensor([num_updates], device=self.device)
+            dist.all_reduce(num_updates_t, op=dist.ReduceOp.MAX)
+            num_updates = int(num_updates_t.item())
             update_start = time.time()
+            all_metrics: list[dict[str, float]] = []
             for _ in range(num_updates):
                 batch = self.replay_buffer.sample(batch_size)
-                train_metrics = self.policy.run_update(batch)
+                all_metrics.append(self.policy.run_update(batch))
+            train_metrics: dict[str, float] = {}
+            for key in set().union(*all_metrics):
+                vals = [m[key] for m in all_metrics if key in m]
+                train_metrics[key] = sum(vals) / len(vals)
+            train_metrics = allreduce_mean(train_metrics, self.device)
             update_end = time.time()
 
             # Sync weights: policy -> actor (lock-free)
