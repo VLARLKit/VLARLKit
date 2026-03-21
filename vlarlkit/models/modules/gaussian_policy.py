@@ -67,31 +67,19 @@ class GaussianPolicy(nn.Module):
         nn.init.xavier_uniform_(self._log_std_layer.weight, gain=0.01)
         nn.init.zeros_(self._log_std_layer.bias)
 
-    def forward(self, features):
-        """Forward pass returning mean and clamped log_std.
+    def forward(self, features, deterministic=False):
+        """Sample actions with reparameterization trick.
 
-        Args:
-            features: [B, input_dim]
-        Returns:
-            mean: [B, output_dim]
-            log_std: [B, output_dim] clamped to [-20, 2]
-        """
-        h = self._shared_net(features)
-        mean = self._mean_layer(h)
-        log_std = torch.clamp(self._log_std_layer(h), -20, 2)
-        return mean, log_std
+        Must go through __call__ (not .sample()) when FSDP-wrapped,
+        so that FSDP hooks refresh parameter views after optimizer steps.
 
-    def sample(self, features, deterministic=False):
-        """Sample actions with CleanRL-style manual reparameterization.
-
-        Args:
-            features: [B, input_dim]
-            deterministic: use tanh(mean) without noise
         Returns:
             action: [B, action_horizon, output_dim]
             log_prob: [B]
         """
-        mean, log_std = self.forward(features)
+        h = self._shared_net(features)
+        mean = self._mean_layer(h)
+        log_std = torch.clamp(self._log_std_layer(h), -20, 2)
         std = torch.exp(log_std)
 
         if deterministic:

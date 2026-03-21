@@ -34,19 +34,25 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
 
     @property
     def _no_split_modules(self) -> list[str]:
+        # DSRL-specific float32 modules must be their own FSDP units
+        # to avoid mixed-dtype flattening with the bfloat16 base model.
+        dsrl_modules = [
+            "GaussianPolicy", "CompactMultiQHead",
+            "LightweightImageEncoder64", "CompactStateEncoder",
+        ]
         if self.config.train_expert_only:
             return [
                 "GemmaDecoderLayer",
                 "SiglipVisionEmbeddings",
                 "GemmaRMSNorm",
                 "GemmaRotaryEmbedding",
-            ]
+            ] + dsrl_modules
         return [
             "GemmaMLP",
             "SiglipVisionEmbeddings",
             "GemmaRMSNorm",
             "GemmaRotaryEmbedding",
-        ]
+        ] + dsrl_modules
 
     def __init__(self, config: OpenPi0DSRLConfig):
         from vlarlkit.models.modules.compact_encoders import (
@@ -107,8 +113,21 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             path_parts = name.split(".")
             setattr(module, "_fsdp_wrap_name", path_parts[-1] if path_parts else name)
 
-    def forward(self, **kwargs):
-        return self.actor_forward(**kwargs)
+    def forward(self, forward_type="actor", **kwargs):
+        if forward_type == "actor":
+            return self.actor_forward(**kwargs)
+        elif forward_type == "critic":
+            return self.critic_forward(**kwargs)
+        elif forward_type == "actor_critic":
+            actions, log_probs, _ = self.actor_forward(**kwargs)
+            q_values = self.critic_forward(
+                obs=kwargs.get("obs"), actions=actions,
+                detach_encoder=kwargs.get("detach_encoder", False),
+                train=kwargs.get("train", False),
+            )
+            return actions, log_probs, q_values
+        else:
+            raise ValueError(f"Unknown forward_type: {forward_type}")
 
     def predict_action_batch(
         self,
@@ -235,9 +254,10 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
         images = self._preprocess_dsrl_images(obs["images"], train=train)
         states = self._preprocess_states(obs["states"])
 
-        device = next(self.actor_image_encoder.parameters()).device
-        images = images.to(device=device, dtype=torch.bfloat16)
-        states = states.to(device=device, dtype=torch.bfloat16)
+        _p = next(self.actor_image_encoder.parameters())
+        device, _dtype = _p.device, _p.dtype
+        images = images.to(device=device, dtype=_dtype)
+        states = states.to(device=device, dtype=_dtype)
 
         image_features = self.actor_image_encoder(images)
         state_features = self.actor_state_encoder(states)
@@ -245,7 +265,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
 
         mode = kwargs.get("mode", "train")
         deterministic = mode == "eval"
-        action_noise, logprobs = self.dsrl_action_noise_net.sample(
+        action_noise, logprobs = self.dsrl_action_noise_net(
             features, deterministic=deterministic
         )
 
@@ -266,10 +286,11 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
         images = self._preprocess_dsrl_images(obs["images"], train=train)
         states = self._preprocess_states(obs["states"])
 
-        device = next(self.critic_image_encoder.parameters()).device
-        images = images.to(device=device, dtype=torch.bfloat16)
-        states = states.to(device=device, dtype=torch.bfloat16)
-        actions = actions.to(device=device, dtype=torch.bfloat16)
+        _p = next(self.critic_image_encoder.parameters())
+        device, _dtype = _p.device, _p.dtype
+        images = images.to(device=device, dtype=_dtype)
+        states = states.to(device=device, dtype=_dtype)
+        actions = actions.to(device=device, dtype=_dtype)
 
         image_features = self.critic_image_encoder(images)
         state_features = self.critic_state_encoder(states)

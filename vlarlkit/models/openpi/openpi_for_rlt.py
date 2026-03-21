@@ -32,19 +32,23 @@ class OpenPi0ForRLT(OpenPi0ForRL):
 
     @property
     def _no_split_modules(self) -> list[str]:
+        # GaussianPolicy and CompactMultiQHead are float32; they must be
+        # wrapped as their own FSDP units to avoid mixed-dtype flattening
+        # with the bfloat16 base model.
+        rlt_modules = ["GaussianPolicy", "CompactMultiQHead"]
         if self.config.train_expert_only:
             return [
                 "GemmaDecoderLayer",
                 "SiglipVisionEmbeddings",
                 "GemmaRMSNorm",
                 "GemmaRotaryEmbedding",
-            ]
+            ] + rlt_modules
         return [
             "GemmaMLP",
             "SiglipVisionEmbeddings",
             "GemmaRMSNorm",
             "GemmaRotaryEmbedding",
-        ]
+        ] + rlt_modules
 
     def __init__(self, config: OpenPi0RLTConfig):
         from vlarlkit.models.modules.compact_encoders import CompactMultiQHead
@@ -138,16 +142,17 @@ class OpenPi0ForRLT(OpenPi0ForRL):
         states = env_obs["states"]
         if not isinstance(states, torch.Tensor):
             states = torch.from_numpy(states)
-        states = states.to(device=rl_token.device, dtype=torch.bfloat16)
         if states.dim() > 2:
             states = states.reshape(B, -1)
 
-        rl_token_bf16 = rl_token.to(torch.bfloat16)
-        ref_actions_bf16 = ref_actions_flat.to(device=rl_token.device, dtype=torch.bfloat16)
-        actor_input = torch.cat([rl_token_bf16, states, ref_actions_bf16], dim=-1)
+        _rlt_dtype = next(self.rlt_actor.parameters()).dtype
+        rl_token = rl_token.to(device=rl_token.device, dtype=_rlt_dtype)
+        ref_actions_flat = ref_actions_flat.to(device=rl_token.device, dtype=_rlt_dtype)
+        states = states.to(device=rl_token.device, dtype=_rlt_dtype)
+        actor_input = torch.cat([rl_token, states, ref_actions_flat], dim=-1)
 
         deterministic = mode == "eval"
-        refined_actions, _ = self.rlt_actor.sample(actor_input, deterministic=deterministic)
+        refined_actions, _ = self.rlt_actor(actor_input, deterministic=deterministic)
         # [B, 1, C*d] -> [B, C, d]
         refined_actions = refined_actions.squeeze(1).reshape(B, self.config.action_chunk, self.config.action_env_dim)
         actions = refined_actions.float().detach().cpu().numpy()
@@ -219,8 +224,17 @@ class OpenPi0ForRLT(OpenPi0ForRL):
 
         return {"actions": x_t, "rl_token": rl_token}
 
-    def forward(self, **kwargs):
-        return self.actor_forward(**kwargs)
+    def forward(self, forward_type="actor", **kwargs):
+        if forward_type == "actor":
+            return self.actor_forward(**kwargs)
+        elif forward_type == "critic":
+            return self.critic_forward(**kwargs)
+        elif forward_type == "actor_critic":
+            actions, log_probs, _ = self.actor_forward(**kwargs)
+            q_values = self.critic_forward(obs=kwargs.get("obs"), actions=actions)
+            return actions, log_probs, q_values
+        else:
+            raise ValueError(f"Unknown forward_type: {forward_type}")
 
     def actor_forward(self, obs=None, train=False, **kwargs):
         """Actor forward: concat(rl_token, states, ref_actions) -> actions.
@@ -231,10 +245,11 @@ class OpenPi0ForRLT(OpenPi0ForRL):
         states = obs["states"]
         ref_actions = obs["ref_actions"]
 
-        device = next(self.rlt_actor.parameters()).device
-        rl_token = self._to_device(rl_token, device, torch.bfloat16)
-        states = self._to_device(states, device, torch.bfloat16)
-        ref_actions = self._to_device(ref_actions, device, torch.bfloat16)
+        _p = next(self.rlt_actor.parameters())
+        device, _dtype = _p.device, _p.dtype
+        rl_token = self._to_device(rl_token, device, _dtype)
+        states = self._to_device(states, device, _dtype)
+        ref_actions = self._to_device(ref_actions, device, _dtype)
 
         # Ref action dropout during training
         if train and self.config.rlt_ref_action_dropout > 0:
@@ -244,7 +259,7 @@ class OpenPi0ForRLT(OpenPi0ForRL):
 
         features = torch.cat([rl_token, states, ref_actions], dim=-1)
         deterministic = not train
-        actions, log_probs = self.rlt_actor.sample(features, deterministic=deterministic)
+        actions, log_probs = self.rlt_actor(features, deterministic=deterministic)
         return actions, log_probs, None
 
     def critic_forward(self, obs=None, actions=None, **kwargs):
@@ -252,16 +267,17 @@ class OpenPi0ForRLT(OpenPi0ForRL):
         rl_token = obs["rl_token"]
         states = obs["states"]
 
-        device = next(self.q_head.parameters()).device
-        rl_token = self._to_device(rl_token, device, torch.bfloat16)
-        states = self._to_device(states, device, torch.bfloat16)
-        actions = self._to_device(actions, device, torch.bfloat16)
+        _p = next(self.q_head.parameters())
+        device, _dtype = _p.device, _p.dtype
+        rl_token = self._to_device(rl_token, device, _dtype)
+        states = self._to_device(states, device, _dtype)
+        actions = self._to_device(actions, device, _dtype)
 
         if actions.dim() == 3:
-            actions = actions[:, 0, :]
+            actions = actions.reshape(actions.shape[0], -1)
 
         state_features = torch.cat([rl_token, states], dim=-1)
-        image_features = torch.zeros(state_features.shape[0], 0, device=device, dtype=torch.bfloat16)
+        image_features = torch.zeros(state_features.shape[0], 0, device=device, dtype=_dtype)
         q_values = self.q_head(state_features, image_features, actions)
         return q_values
 
