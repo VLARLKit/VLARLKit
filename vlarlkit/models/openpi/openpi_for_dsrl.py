@@ -7,7 +7,6 @@ from openpi.models import model as _model
 from openpi.models.pi0_config import Pi0Config
 from openpi.models_pytorch.pi0_pytorch import PI0Pytorch, make_att_2d_masks
 
-from vlarlkit.models.base import ForwardType
 from vlarlkit.models.openpi.openpi_for_rl import OpenPi0ForRL
 
 
@@ -108,13 +107,8 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             path_parts = name.split(".")
             setattr(module, "_fsdp_wrap_name", path_parts[-1] if path_parts else name)
 
-    def forward(self, forward_type=ForwardType.SAC, **kwargs):
-        if forward_type == ForwardType.SAC:
-            return self.sac_forward(**kwargs)
-        elif forward_type == ForwardType.SAC_Q:
-            return self.sac_q_forward(**kwargs)
-        else:
-            raise NotImplementedError
+    def forward(self, **kwargs):
+        return self.actor_forward(**kwargs)
 
     def predict_action_batch(
         self,
@@ -129,12 +123,12 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
 
         # SAC agent outputs noise
         dsrl_obs = {"images": [env_obs["main_images"]], "states": env_obs["states"]}
-        noise_actions, noise_logprob, _ = self.sac_forward(
+        noise_actions, noise_logprob, _ = self.actor_forward(
             obs=dsrl_obs, train=False, mode=mode
         )
 
         # Use noise to steer frozen Pi0 denoising
-        outputs = self.sample_actions(observation, noise=noise_actions, mode="eval")
+        outputs = self.sample_actions(observation, noise=noise_actions)
 
         # Extract real actions for env
         actions = self.output_transform(
@@ -156,7 +150,6 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
         self,
         observation: _model.Observation,
         noise=None,
-        mode="eval",
         **kwargs,
     ) -> dict[str, torch.Tensor]:
         """Pure ODE denoising — no SDE, no chains/logprobs tracking."""
@@ -229,7 +222,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
                 if any(proj_name in name for proj_name in projection_names):
                     param.requires_grad = False
 
-    def sac_forward(self, obs=None, train=False, **kwargs):
+    def actor_forward(self, obs=None, train=False, **kwargs):
         if obs is None:
             obs = kwargs.get("obs", {})
 
@@ -258,7 +251,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
 
         return action_noise, logprobs, None
 
-    def sac_q_forward(self, obs=None, actions=None, detach_encoder=False, train=False, **kwargs):
+    def critic_forward(self, obs=None, actions=None, detach_encoder=False, train=False, **kwargs):
         if obs is None:
             obs = kwargs.get("obs", {})
         if actions is None:

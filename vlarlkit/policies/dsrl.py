@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 import torch.distributed as dist
 
-from vlarlkit.models.base import BaseModel, ForwardType
+from vlarlkit.models.base import BaseModel
 from vlarlkit.utils.fsdp_utils import (
     clip_grad_norm_,
     get_sharding_strategy,
@@ -47,7 +47,6 @@ class DSRLPolicy:
         self._backup_entropy = bool(self._algo_cfg.get("backup_entropy", False))
         self._agg_q = str(self._algo_cfg.get("agg_q", "mean"))
         self._num_action_chunks = int(cfg.model.get("num_action_chunks", 1))
-        self._train_actor_steps = int(self._algo_cfg.get("train_actor_steps", 0))
 
         # Derive gradient accumulation from global/micro batch sizes
         global_bs = self._algo_cfg.get("global_batch_size")
@@ -125,6 +124,22 @@ class DSRLPolicy:
         for name, param in self._target_model.named_parameters():
             self._target_shadow_f32[name] = param.data.float().clone()
 
+    def process_batch_for_replay(self, batch: dict) -> dict:
+        """Transform raw rollout batch into replay-ready data.
+
+        Extracts noise actions from forward_inputs, filters by loss_mask.
+        """
+        mask = batch["loss_mask"].bool()
+        return {
+            "obs/main_images": batch["obs/main_images"][mask],
+            "obs/states": batch["obs/states"][mask],
+            "next_obs/main_images": batch["next_obs/main_images"][mask],
+            "next_obs/states": batch["next_obs/states"][mask],
+            "actions": batch["forward_inputs"]["action"][mask],
+            "rewards": batch["rewards"][mask],
+            "terminations": batch["terminations"][mask],
+        }
+
     def run_update(self, batch: dict[str, np.ndarray]) -> dict[str, float]:
         """One SAC update step with gradient accumulation."""
         self.model.train()
@@ -138,7 +153,7 @@ class DSRLPolicy:
         total_q_mean = 0.0
         for mb in micro_batches:
             obs, next_obs, actions, rewards, terminations = self._prepare_batch(mb)
-            critic_loss, critic_metrics = self._forward_critic(
+            critic_loss, critic_metrics = self._compute_critic_loss(
                 obs, next_obs, actions, rewards, terminations
             )
             (critic_loss / n_accum).backward()
@@ -157,10 +172,7 @@ class DSRLPolicy:
         }
 
         # --- Actor + Alpha update (every critic_actor_ratio steps, after warmup) ---
-        if (
-            self._update_step % self._critic_actor_ratio == 0
-            and self._update_step >= self._train_actor_steps
-        ):
+        if self._update_step % self._critic_actor_ratio == 0:
             self._actor_optimizer.zero_grad()
             if self._alpha_optimizer is not None:
                 self._alpha_optimizer.zero_grad()
@@ -171,7 +183,7 @@ class DSRLPolicy:
 
             for mb in micro_batches:
                 obs, _, _, _, _ = self._prepare_batch(mb)
-                actor_loss, entropy, log_pi = self._forward_actor(obs)
+                actor_loss, entropy, log_pi = self._compute_actor_loss(obs)
                 (actor_loss / n_accum).backward()
                 total_actor_loss += actor_loss.item()
                 total_entropy += entropy.item()
@@ -226,20 +238,19 @@ class DSRLPolicy:
             micro_batches.append(mb)
         return micro_batches
 
-    def _forward_critic(self, obs, next_obs, actions, rewards, terminations):
+    def _compute_critic_loss(self, obs, next_obs, actions, rewards, terminations):
         """Compute critic loss: MSE(Q(s,a), r + gamma * (min Q_target(s', pi(s')) - alpha * log_pi))."""
         discount = self._gamma ** self._num_action_chunks
 
         with torch.no_grad():
-            next_actions, next_log_pi, _ = self.model(
-                forward_type=ForwardType.SAC, obs=next_obs, train=True,
+            next_actions, next_log_pi, _ = self.model.actor_forward(
+                obs=next_obs, train=True,
             )
             if next_log_pi.ndim == 1:
                 next_log_pi = next_log_pi.unsqueeze(-1)
 
-            target_q = self._target_model(
-                forward_type=ForwardType.SAC_Q, obs=next_obs,
-                actions=next_actions, train=True,
+            target_q = self._target_model.critic_forward(
+                obs=next_obs, actions=next_actions, train=True,
             )
 
             if self._agg_q == "min":
@@ -255,8 +266,8 @@ class DSRLPolicy:
                 + (~terminations.unsqueeze(-1)) * discount * qf_next
             )
 
-        current_q = self.model(
-            forward_type=ForwardType.SAC_Q, obs=obs, actions=actions, train=True,
+        current_q = self.model.critic_forward(
+            obs=obs, actions=actions, train=True,
         )
 
         target_q_values = target_q_values.to(dtype=current_q.dtype)
@@ -264,17 +275,16 @@ class DSRLPolicy:
 
         return critic_loss, {"q_mean": current_q.mean().item()}
 
-    def _forward_actor(self, obs):
+    def _compute_actor_loss(self, obs):
         """Compute actor loss and return log_pi for alpha reuse."""
-        pi, log_pi, _ = self.model(
-            forward_type=ForwardType.SAC, obs=obs, train=True,
+        pi, log_pi, _ = self.model.actor_forward(
+            obs=obs, train=True,
         )
         if log_pi.ndim == 1:
             log_pi = log_pi.unsqueeze(-1)
 
-        q_values = self.model(
-            forward_type=ForwardType.SAC_Q, obs=obs, actions=pi,
-            detach_encoder=True, train=True,
+        q_values = self.model.critic_forward(
+            obs=obs, actions=pi, detach_encoder=True, train=True,
         )
 
         if self._agg_q == "min":
@@ -318,7 +328,7 @@ class DSRLPolicy:
                     key = k[len(prefix) + 1:]
                     t = torch.from_numpy(v) if isinstance(v, np.ndarray) else v
                     obs_dict[key] = t.to(self.device)
-            # Convert to format expected by sac_forward: {"images": [...], "states": ...}
+            # Convert to format expected by actor_forward: {"images": [...], "states": ...}
             result = {"states": obs_dict["states"]}
             if "main_images" in obs_dict:
                 result["images"] = [obs_dict["main_images"]]
