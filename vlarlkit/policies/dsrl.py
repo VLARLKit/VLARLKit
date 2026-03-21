@@ -56,8 +56,7 @@ class DSRLPolicy:
 
         self._setup_optimizers()
         self._setup_alpha()
-        self._init_target_shadow()
-        self._soft_update_target(tau=1.0)
+        self._init_ema_params()
         self._update_step = 0
 
     def _setup_optimizers(self) -> None:
@@ -118,11 +117,20 @@ class DSRLPolicy:
     def _alpha(self) -> torch.Tensor:
         return F.softplus(self._base_alpha)
 
-    def _init_target_shadow(self):
-        """Float32 shadow for EMA precision under bfloat16."""
-        self._target_shadow_f32 = {}
-        for name, param in self._target_model.named_parameters():
-            self._target_shadow_f32[name] = param.data.float().clone()
+    def _init_ema_params(self):
+        """Record trainable param names and sync target model once."""
+        self._ema_param_names = set()
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self._ema_param_names.add(name)
+
+        # Initial hard copy: sync all params (frozen + trainable) once
+        with torch.no_grad():
+            for (name, online_p), (_, target_p) in zip(
+                self.model.named_parameters(),
+                self._target_model.named_parameters(),
+            ):
+                target_p.data.copy_(online_p.data)
 
     def process_batch_for_replay(self, batch: dict) -> dict:
         """Transform raw rollout batch into replay-ready data.
@@ -301,19 +309,18 @@ class DSRLPolicy:
         return -self._alpha * (log_pi.mean() + self._target_entropy)
 
     def _soft_update_target(self, tau: float | None = None) -> None:
-        """EMA update target model using float32 shadow for bf16 precision."""
+        """EMA update only trainable params (MLP heads) in target model."""
         if tau is None:
             tau = self._tau
 
         with torch.no_grad():
-            for (name1, online_param), (name2, target_param) in zip(
+            for (name, online_p), (_, target_p) in zip(
                 self.model.named_parameters(),
                 self._target_model.named_parameters(),
             ):
-                assert name1 == name2
-                shadow = self._target_shadow_f32[name1]
-                shadow.mul_(1.0 - tau).add_(online_param.data.float(), alpha=tau)
-                target_param.data.copy_(shadow.to(target_param.data.dtype))
+                if name not in self._ema_param_names:
+                    continue
+                target_p.data.mul_(1.0 - tau).add_(online_p.data, alpha=tau)
 
     def _prepare_batch(self, batch: dict[str, np.ndarray]):
         """Convert flat replay buffer batch to nested obs dicts on device.
@@ -355,17 +362,11 @@ class DSRLPolicy:
         return {
             "update_step": self._update_step,
             "base_alpha": self._base_alpha.data.cpu(),
-            "target_shadow_f32": {k: v.cpu() for k, v in self._target_shadow_f32.items()},
         }
 
     def load_state_dict(self, state: dict) -> None:
         self._update_step = state["update_step"]
         self._base_alpha.data.copy_(state["base_alpha"].to(self.device))
-        self._target_shadow_f32 = {k: v.to(self.device) for k, v in state["target_shadow_f32"].items()}
-        # Rebuild target model params from shadow
-        with torch.no_grad():
-            for name, param in self._target_model.named_parameters():
-                param.data.copy_(self._target_shadow_f32[name].to(param.dtype))
 
     def get_model(self) -> torch.nn.Module:
         return self.model

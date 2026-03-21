@@ -64,7 +64,7 @@ class OpenPi0ForRLT(OpenPi0ForRL):
 
         action_dim = config.action_chunk * config.action_env_dim
 
-        _rlt_dtype = torch.bfloat16
+        _rlt_dtype = torch.float32
         mag = config.rlt_action_magnitude
 
         # Actor: maps (rl_token, state, ref_actions) -> refined actions

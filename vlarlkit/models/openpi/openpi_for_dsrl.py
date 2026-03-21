@@ -63,7 +63,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
         self.global_step = 0
 
         # DSRL-specific modules
-        _dsrl_dtype = torch.bfloat16
+        _dsrl_dtype = torch.float32
         dsrl_input_dim = config.dsrl_state_latent_dim + config.dsrl_image_latent_dim
 
         mag = config.dsrl_action_magnitude
