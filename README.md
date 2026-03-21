@@ -12,9 +12,9 @@ An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) m
 
 | Category | Supported |
 |---|---|
-| **RL Algorithms** | PPO (on-policy), DSRL (off-policy) |
-| **Base Models** | $\pi_{\text{0.5}}$ |
-| **Benchmarks** | LIBERO |
+| **RL Algorithms** | [PPO](https://arxiv.org/abs/1707.06347) (on-policy), [DSRL](https://arxiv.org/pdf/2506.15799) (off-policy), [RLT](https://www.pi.website/download/rlt.pdf) (off-policy) |
+| **Base Models** | [$\pi_{\text{0.5}}$](https://github.com/Physical-Intelligence/openpi) |
+| **Benchmarks** | [LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO) |
 
 ## Installation
 
