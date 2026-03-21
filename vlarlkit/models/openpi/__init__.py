@@ -31,10 +31,12 @@ def _get_registry():
     if _MODEL_REGISTRY is None:
         from vlarlkit.models.openpi.openpi_for_rl import OpenPi0RLConfig, OpenPi0ForRL
         from vlarlkit.models.openpi.openpi_for_dsrl import OpenPi0DSRLConfig, OpenPi0ForDSRL
+        from vlarlkit.models.openpi.openpi_for_rlt import OpenPi0RLTConfig, OpenPi0ForRLT
 
         _MODEL_REGISTRY = {
             "OpenPi0ForRL": (OpenPi0RLConfig, OpenPi0ForRL),
             "OpenPi0ForDSRL": (OpenPi0DSRLConfig, OpenPi0ForDSRL),
+            "OpenPi0ForRLT": (OpenPi0RLTConfig, OpenPi0ForRLT),
         }
     return _MODEL_REGISTRY
 

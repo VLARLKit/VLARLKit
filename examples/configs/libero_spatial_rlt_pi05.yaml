@@ -1,0 +1,100 @@
+defaults:
+  - envs/libero_spatial@env.train
+  - envs/libero_spatial@env.eval
+  - models/pi05_for_rlt@model
+
+hydra:
+  run:
+    dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+
+algorithm:
+  policy_class: rlt
+
+  # TD3 hyperparameters
+  gamma: 0.999
+  tau: 0.005
+  agg_q: min
+  critic_actor_ratio: 2
+  rlt_bc_weight: 1.0
+
+  # Training
+  utd_ratio: 4.0
+  global_warmup_steps: 1000
+  global_replay_buffer_size: 100000
+  global_batch_size: 512
+  micro_batch_size: 128
+  queue_size: 4
+
+  # Rollout
+  rollout_epochs: 1
+  eval_rollout_epochs: 1
+
+env:
+  env_client_host: "localhost"
+  env_client_base_port: 5550
+  train:
+    seed: ${runner.seed}
+    total_num_envs: 8
+    max_episode_steps: 240
+    reward_coef: 1.0
+    use_rel_reward: False
+    use_step_penalty: True
+    use_ordered_reset_state_ids: True
+    specific_reset_id: 0
+  eval:
+    seed: ${runner.seed}
+    total_num_envs: 10
+    max_episode_steps: 240
+    group_size: 1
+    is_eval: True
+    use_step_penalty: True
+    use_rel_reward: False
+    use_ordered_reset_state_ids: True
+    specific_reset_id: 0
+
+model:
+  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
+  num_action_chunks: 5
+  action_dim: 7
+  use_proprio: True
+  num_steps: 3
+
+  openpi:
+    config_name: "pi05_libero"
+    num_images_in_input: 2
+
+  data:
+    name: "libero"
+    repo_id: "physical-intelligence/libero"
+    prompt_from_task: True
+    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT/physical-intelligence/libero"
+    extra_delta_transform: False
+
+training:
+  optim:
+    lr: 1.0e-4
+    value_lr: 3.0e-4
+    clip_grad: 3.5
+    critic_clip_grad: 10.0
+
+  fsdp_config:
+    strategy: "fsdp"
+    sharding_strategy: "no_shard"
+    gradient_checkpointing: False
+    forward_prefetch: False
+    backward_prefetch: null
+    mixed_precision:
+      param_dtype: ${model.precision}
+      reduce_dtype: ${model.precision}
+      buffer_dtype: ${model.precision}
+
+runner:
+  seed: 42
+  max_epochs: 200
+  eval_interval: 10
+  save_interval: 10
+  resume_from: null
+  is_debug: False
+  logger:
+    project: "VLARLKit"
+    experiment_name: "libero_spatial_rlt_pi05"

@@ -1,0 +1,39 @@
+model_type: "openpi"
+
+# Model path - should be set in specific config files
+model_path: "/path/to/model/openpi"
+
+precision: null # for openpi, precision is null, please do not change this value
+
+# Action and chunk settings
+num_action_chunks: 10
+action_dim: 7
+
+# Training settings
+use_proprio: True
+num_steps: 5
+
+# openpi specific parameters
+openpi:
+  model_class_name: "OpenPi0ForRLT"
+  pi05: True
+  config_name: "pi05_libero"
+  num_images_in_input: 2
+  action_chunk: ${model.num_action_chunks}
+  num_steps: ${model.num_steps}
+  train_expert_only: True
+  action_env_dim: ${model.action_dim}
+  discrete_state_input: False
+  # RLT-specific
+  rlt_state_dim: 8
+  rlt_hidden_dims: [256, 256]
+  rlt_num_q_heads: 2
+  rlt_ref_action_dropout: 0.5
+  rlt_action_magnitude: 1.0
+
+data:
+  name: "libero"
+  repo_id: "physical-intelligence/libero"
+  prompt_from_task: True
+  assets_dir: "checkpoints/torch/pi0_libero/assets"
+  extra_delta_transform: False
