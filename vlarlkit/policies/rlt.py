@@ -46,7 +46,7 @@ class RLTPolicy:
         self._tau = float(self._algo_cfg.get("tau", 0.005))
         self._agg_q = str(self._algo_cfg.get("agg_q", "min"))
         self._num_action_chunks = int(cfg.model.get("num_action_chunks", 1))
-        self._bc_weight = float(self._algo_cfg.get("rlt_bc_weight", 1.0))
+        self._alpha = float(self._algo_cfg.get("rlt_alpha", 1.0))
 
         # Gradient accumulation
         global_bs = self._algo_cfg.get("global_batch_size")
@@ -198,11 +198,11 @@ class RLTPolicy:
         discount = self._gamma ** self._num_action_chunks
 
         with torch.no_grad():
-            next_actions, _, _ = self.model.actor_forward(
-                obs=next_obs, train=False, # should we use train=False?
+            next_actions, _, _ = self._target_model(
+                forward_type="actor", obs=next_obs, train=False,
             )
-            target_q = self._target_model.critic_forward(
-                obs=next_obs, actions=next_actions,
+            target_q = self._target_model(
+                forward_type="critic", obs=next_obs, actions=next_actions,
             )
 
             if self._agg_q == "min":
@@ -215,8 +215,8 @@ class RLTPolicy:
                 + (~terminations.unsqueeze(-1)) * discount * qf_next
             )
 
-        current_q = self.model.critic_forward(
-            obs=obs, actions=actions,
+        current_q = self.model(
+            forward_type="critic", obs=obs, actions=actions,
         )
 
         target_q_values = target_q_values.to(dtype=current_q.dtype)
@@ -225,19 +225,22 @@ class RLTPolicy:
         return critic_loss, {"q_mean": current_q.mean().item()}
 
     def _compute_actor_loss(self, obs):
-        """TD3 actor loss: -Q(s, pi(s)) + beta * ||pi(s) - ref_actions||^2."""
-        actions, _, _ = self.model.actor_forward(
-            obs=obs, train=True,
-        )
+        """TD3+BC actor loss: -lmbda * Q(s, pi(s)) + ||pi(s) - ref_actions||^2.
 
-        q_values = self.model.critic_forward(
-            obs=obs, actions=actions,
+        lmbda = alpha / |Q|.mean() normalizes the RL term by Q-value magnitude,
+        so the BC weight (alpha) is scale-invariant.
+        """
+        actions, _, q_values = self.model(
+            forward_type="actor_critic", obs=obs, train=True,
         )
 
         if self._agg_q == "min":
             qf_pi, _ = torch.min(q_values, dim=1, keepdim=True)
         else:
             qf_pi = torch.mean(q_values, dim=1, keepdim=True)
+
+        # Q-normalized RL term (TD3+BC style)
+        lmbda = self._alpha / (qf_pi.abs().mean().detach() + 1e-6)
 
         # BC regularization: penalize deviation from ref_actions
         ref_actions = obs["ref_actions"]
@@ -248,9 +251,9 @@ class RLTPolicy:
             actions_flat = actions.squeeze(1)
         else:
             actions_flat = actions
-        bc_loss = ((actions_flat - ref_actions) ** 2).sum(-1).mean()
+        bc_loss = F.mse_loss(actions_flat, ref_actions)
 
-        actor_loss = -qf_pi.mean() + self._bc_weight * bc_loss
+        actor_loss = -lmbda * qf_pi.mean() + bc_loss
         return actor_loss, bc_loss
 
     def _soft_update_target(self, tau: float | None = None) -> None:

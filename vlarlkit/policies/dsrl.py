@@ -251,14 +251,14 @@ class DSRLPolicy:
         discount = self._gamma ** self._num_action_chunks
 
         with torch.no_grad():
-            next_actions, next_log_pi, _ = self.model.actor_forward(
-                obs=next_obs, train=True,
+            next_actions, next_log_pi, _ = self.model(
+                forward_type="actor", obs=next_obs, train=True,
             )
             if next_log_pi.ndim == 1:
                 next_log_pi = next_log_pi.unsqueeze(-1)
 
-            target_q = self._target_model.critic_forward(
-                obs=next_obs, actions=next_actions, train=True,
+            target_q = self._target_model(
+                forward_type="critic", obs=next_obs, actions=next_actions, train=True,
             )
 
             if self._agg_q == "min":
@@ -274,8 +274,8 @@ class DSRLPolicy:
                 + (~terminations.unsqueeze(-1)) * discount * qf_next
             )
 
-        current_q = self.model.critic_forward(
-            obs=obs, actions=actions, train=True,
+        current_q = self.model(
+            forward_type="critic", obs=obs, actions=actions, train=True,
         )
 
         target_q_values = target_q_values.to(dtype=current_q.dtype)
@@ -285,15 +285,12 @@ class DSRLPolicy:
 
     def _compute_actor_loss(self, obs):
         """Compute actor loss and return log_pi for alpha reuse."""
-        pi, log_pi, _ = self.model.actor_forward(
-            obs=obs, train=True,
+        pi, log_pi, q_values = self.model(
+            forward_type="actor_critic", obs=obs, train=True,
+            detach_encoder=True,
         )
         if log_pi.ndim == 1:
             log_pi = log_pi.unsqueeze(-1)
-
-        q_values = self.model.critic_forward(
-            obs=obs, actions=pi, detach_encoder=True, train=True,
-        )
 
         if self._agg_q == "min":
             qf_pi, _ = torch.min(q_values, dim=1, keepdim=True)
