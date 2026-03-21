@@ -15,7 +15,7 @@ algorithm:
   tau: 0.005
   agg_q: min
   critic_actor_ratio: 2
-  rlt_bc_weight: 1.0
+  rlt_alpha: 2.5
 
   # Training
   utd_ratio: 4.0
