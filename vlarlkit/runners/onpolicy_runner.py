@@ -115,7 +115,7 @@ class OnPolicyRunner:
                 train_metrics_str = ", ".join(
                     f"{k}={v:.4f}" for k, v in train_metrics.items()
                 )
-                logger.info("Epoch %d/%d - Train: %s", epoch, max_epochs, train_metrics_str)
+                logger.info("Epoch %d/%d - success_rate=%.4f, Train: %s", epoch, max_epochs, rollout_stats["success_rate"][0], train_metrics_str)
                 epoch_log.update({f"rollout/{k}": v for k, v in batch_stats.items()})
                 epoch_log["rollout/success_rate"] = rollout_stats["success_rate"][0]
                 epoch_log.update({f"train/{k}": v for k, v in train_metrics.items()})
