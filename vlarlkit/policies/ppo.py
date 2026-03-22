@@ -203,7 +203,8 @@ class PPOPolicy:
                     self._slice_batch(forward_inputs, mb_inds), self.device
                 )
                 mb_mask = loss_mask[mb_inds].to(self.device) if loss_mask is not None else None
-                mb_ratio = loss_mask_ratio[mb_inds].to(self.device) if loss_mask_ratio is not None else None
+                # mb_ratio = loss_mask_ratio[mb_inds].to(self.device) if loss_mask_ratio is not None else None
+                mb_ratio = None
 
                 out = self.model(
                     forward_inputs=mb_forward_inputs,
