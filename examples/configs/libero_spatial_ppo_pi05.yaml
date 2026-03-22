@@ -5,7 +5,7 @@ defaults:
 
 hydra:
   run:
-    dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+    dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M}
 
 algorithm:
   normalize_advantages: True
