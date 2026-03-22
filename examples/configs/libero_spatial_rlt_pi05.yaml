@@ -40,17 +40,17 @@ env:
     use_rel_reward: False
     use_step_penalty: True
     use_ordered_reset_state_ids: True
-    specific_reset_id: 0
+    specific_reset_id: 250
   eval:
     seed: ${runner.seed}
-    total_num_envs: 10
+    total_num_envs: 20
     max_episode_steps: 240
     group_size: 1
     is_eval: True
     use_step_penalty: True
     use_rel_reward: False
     use_ordered_reset_state_ids: True
-    specific_reset_id: 0
+    specific_reset_id: 250
 
 model:
   model_path: "/scratch/s/sunyh/RLinf-Pi05-LIBERO-SFT"
