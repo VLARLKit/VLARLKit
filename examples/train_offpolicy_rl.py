@@ -71,7 +71,7 @@ def main(cfg: DictConfig) -> None:
     actor_model.to(f"cuda:{rank}")
     train_rollout_result = RolloutResult()
     train_rollout_worker = Rollout(cfg, train_env, actor_model, train_rollout_result, mode="train",
-                                    compute_next_forward_inputs=True)
+                                    is_onpolicy=False)
     eval_rollout_worker = Rollout(cfg, eval_env, actor_model, mode="eval")
 
     # Load checkpoint if resuming

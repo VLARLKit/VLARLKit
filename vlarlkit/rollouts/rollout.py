@@ -8,14 +8,14 @@ import numpy as np
 
 class Rollout:
     def __init__(self, cfg, env, actor_model, rollout_result: RolloutResult | None = None, mode="train",
-                 compute_next_forward_inputs: bool = False):
+                 is_onpolicy: bool = True):
         self.cfg = cfg
         self.env = env
         self.actor_model = actor_model
         self.actor_model.eval()
         self.rollout_result = rollout_result
         self.mode = mode
-        self._compute_next_forward_inputs = compute_next_forward_inputs
+        self._is_onpolicy = is_onpolicy
 
         self.init_rollout()
 
@@ -35,7 +35,17 @@ class Rollout:
             with torch.no_grad():
                 actions, info = self.actor_model.predict_action_batch(obs, mode=self.mode)
             next_obs, rewards, terminations, truncations, env_info = self.env.chunk_step(actions)
-            rewards = rewards.sum(-1)
+
+            if self._is_onpolicy:
+                rewards = rewards.sum(-1)
+            else:
+                # Truncated sum: only accumulate rewards up to (and including)
+                # the first termination step; post-termination rewards are invalid.
+                # cum_term = np.cumsum(terminations, axis=-1)
+                # valid_mask = (cum_term <= 1).astype(rewards.dtype)
+                # rewards = (rewards * valid_mask).sum(-1)
+                rewards = rewards.max(-1)
+
             terminations = terminations.any(-1)
             truncations = truncations.any(-1)
 
@@ -55,7 +65,7 @@ class Rollout:
 
         # Off-policy: run one extra predict to get forward_inputs for the
         # last next_obs, then temporal-shift to build next_forward_inputs.
-        if self._compute_next_forward_inputs and self.rollout_result is not None:
+        if not self._is_onpolicy and self.rollout_result is not None:
             with torch.no_grad():
                 _, extra_info = self.actor_model.predict_action_batch(obs, mode=self.mode)
             extra_fi = extra_info.get("forward_inputs")
