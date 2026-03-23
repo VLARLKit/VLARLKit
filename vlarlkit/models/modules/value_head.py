@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
 import torch.nn as nn
 
 
@@ -65,3 +66,17 @@ class ValueHead(nn.Module):
 
     def forward(self, x):
         return self.mlp(x)
+
+
+def aggregate_q(q_values: torch.Tensor, mode: str) -> torch.Tensor:
+    """Aggregate Q-values across ensemble heads. q_values: [B, N]."""
+    if mode == "min":
+        return torch.min(q_values, dim=1, keepdim=True).values
+    elif mode == "mean":
+        return torch.mean(q_values, dim=1, keepdim=True)
+    elif mode == "redq":
+        n_heads = q_values.shape[1]
+        idx = torch.randperm(n_heads, device=q_values.device)[:2]
+        return torch.min(q_values[:, idx], dim=1, keepdim=True).values
+    else:
+        raise ValueError(f"Unknown agg_q mode: {mode}")

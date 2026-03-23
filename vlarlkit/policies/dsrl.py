@@ -13,6 +13,9 @@ from vlarlkit.utils.fsdp_utils import (
     wrap_model_with_fsdp,
 )
 
+
+from vlarlkit.models.modules.value_head import aggregate_q
+
 logger = logging.getLogger("vlarlkit.policy")
 
 
@@ -261,10 +264,7 @@ class DSRLPolicy:
                 forward_type="critic", obs=next_obs, actions=next_actions, train=True,
             )
 
-            if self._agg_q == "min":
-                qf_next, _ = torch.min(target_q, dim=1, keepdim=True)
-            else:
-                qf_next = torch.mean(target_q, dim=1, keepdim=True)
+            qf_next = aggregate_q(target_q, self._agg_q)
 
             if self._backup_entropy:
                 qf_next = qf_next - self._alpha * next_log_pi
@@ -292,10 +292,7 @@ class DSRLPolicy:
         if log_pi.ndim == 1:
             log_pi = log_pi.unsqueeze(-1)
 
-        if self._agg_q == "min":
-            qf_pi, _ = torch.min(q_values, dim=1, keepdim=True)
-        else:
-            qf_pi = torch.mean(q_values, dim=1, keepdim=True)
+        qf_pi = aggregate_q(q_values, self._agg_q)
 
         actor_loss = (self._alpha.detach() * log_pi - qf_pi).mean()
         entropy = -log_pi.mean()

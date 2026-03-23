@@ -13,6 +13,9 @@ from vlarlkit.utils.fsdp_utils import (
     wrap_model_with_fsdp,
 )
 
+
+from vlarlkit.models.modules.value_head import aggregate_q
+
 logger = logging.getLogger("vlarlkit.policy")
 
 
@@ -205,10 +208,7 @@ class RLTPolicy:
                 forward_type="critic", obs=next_obs, actions=next_actions,
             )
 
-            if self._agg_q == "min":
-                qf_next, _ = torch.min(target_q, dim=1, keepdim=True)
-            else:
-                qf_next = torch.mean(target_q, dim=1, keepdim=True)
+            qf_next = aggregate_q(target_q, self._agg_q)
 
             target_q_values = (
                 rewards.unsqueeze(-1)
@@ -234,10 +234,7 @@ class RLTPolicy:
             forward_type="actor_critic", obs=obs, train=True,
         )
 
-        if self._agg_q == "min":
-            qf_pi, _ = torch.min(q_values, dim=1, keepdim=True)
-        else:
-            qf_pi = torch.mean(q_values, dim=1, keepdim=True)
+        qf_pi = aggregate_q(q_values, self._agg_q)
 
         # Q-normalized RL term (TD3+BC style)
         lmbda = self._alpha / (qf_pi.abs().mean().detach() + 1e-6)
