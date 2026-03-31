@@ -1,6 +1,7 @@
 from typing import Any
 
 from vlarlkit.data.io_struct import RolloutResult
+from vlarlkit.utils.conversion_utils import to_numpy
 
 import torch
 import numpy as np
@@ -70,7 +71,7 @@ class Rollout:
                 _, extra_info = self.actor_model.predict_action_batch(obs, mode=self.mode)
             extra_fi = extra_info.get("forward_inputs")
             if extra_fi is not None:
-                self.rollout_result.forward_inputs.append(extra_fi)
+                self.rollout_result.forward_inputs.append(to_numpy(extra_fi))
                 self.rollout_result.build_next_forward_inputs()
         
         # Update reset state ids for next epoch rollouts
