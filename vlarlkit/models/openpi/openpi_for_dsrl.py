@@ -109,6 +109,9 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             output_dim=1,
         ).to(dtype=_dsrl_dtype)
 
+        from vlarlkit.models.modules.image_augmentation import ColorJitter, RandomCrop
+        self._augmentations = [RandomCrop(pad=4), ColorJitter()]
+
         for name, module in self.named_modules():
             path_parts = name.split(".")
             setattr(module, "_fsdp_wrap_name", path_parts[-1] if path_parts else name)
@@ -123,7 +126,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             q_values = self.critic_forward(
                 obs=kwargs.get("obs"), actions=actions,
                 detach_encoder=kwargs.get("detach_encoder", False),
-                train=kwargs.get("train", False),
+                aug_img=kwargs.get("aug_img", False),
             )
             return actions, log_probs, q_values
         else:
@@ -143,7 +146,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
         # SAC agent outputs noise
         dsrl_obs = {"images": [env_obs["main_images"]], "states": env_obs["states"]}
         noise_actions, noise_logprob, _ = self.actor_forward(
-            obs=dsrl_obs, train=False, mode=mode
+            obs=dsrl_obs, aug_img=False, mode=mode
         )
 
         # Use noise to steer frozen Pi0 denoising
@@ -241,7 +244,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
                 if any(proj_name in name for proj_name in projection_names):
                     param.requires_grad = False
 
-    def actor_forward(self, obs=None, train=False, **kwargs):
+    def actor_forward(self, obs=None, aug_img=False, **kwargs):
         if obs is None:
             obs = kwargs.get("obs", {})
 
@@ -251,7 +254,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             else:
                 raise ValueError(f"Invalid obs format: {obs.keys()}")
 
-        images = self._preprocess_dsrl_images(obs["images"], train=train)
+        images = self._preprocess_dsrl_images(obs["images"], aug_img=aug_img)
         states = self._preprocess_states(obs["states"])
 
         _p = next(self.actor_image_encoder.parameters())
@@ -271,7 +274,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
 
         return action_noise, logprobs, None
 
-    def critic_forward(self, obs=None, actions=None, detach_encoder=False, train=False, **kwargs):
+    def critic_forward(self, obs=None, actions=None, detach_encoder=False, aug_img=False, **kwargs):
         if obs is None:
             obs = kwargs.get("obs", {})
         if actions is None:
@@ -283,7 +286,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             else:
                 raise ValueError(f"Invalid obs format: {obs.keys()}")
 
-        images = self._preprocess_dsrl_images(obs["images"], train=train)
+        images = self._preprocess_dsrl_images(obs["images"], aug_img=aug_img)
         states = self._preprocess_states(obs["states"])
 
         _p = next(self.critic_image_encoder.parameters())
@@ -305,7 +308,7 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
         q_values = self.q_head(state_features, image_features, actions)
         return q_values
 
-    def _preprocess_dsrl_images(self, images, train=False):
+    def _preprocess_dsrl_images(self, images, aug_img=False):
         import torch.nn.functional as F
 
         agentview_img = images[0] if isinstance(images, list) else images
@@ -329,6 +332,11 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             agentview_img, size=(64, 64), mode="bilinear", align_corners=False,
         )
 
+        # Data augmentation (operates on [0, 1] range)
+        if aug_img:
+            for aug in self._augmentations:
+                resized_img = aug(resized_img)
+
         # [0, 1] -> [-1, 1]
         resized_img = resized_img * 2.0 - 1.0
         # [B, C, 64, 64] -> [B, 1, C, 64, 64]
@@ -340,6 +348,4 @@ class OpenPi0ForDSRL(OpenPi0ForRL):
             states = torch.from_numpy(states)
         if states.dim() > 2:
             states = states.reshape(states.shape[0], -1)
-        if states.dtype != torch.bfloat16:
-            states = states.to(torch.bfloat16)
-        return states
+        return states.float()
