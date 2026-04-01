@@ -13,9 +13,9 @@ algorithm:
   # TD3 hyperparameters
   gamma: 0.999
   tau: 0.005
-  agg_q: min
+  agg_q: redq
   critic_actor_ratio: 2
-  rlt_alpha: 2.5
+  rlt_alpha: 1.0
 
   # Training
   utd_ratio: 4.0
@@ -40,17 +40,17 @@ env:
     use_rel_reward: False
     use_step_penalty: True
     use_ordered_reset_state_ids: True
-    specific_reset_id: 0
+    specific_reset_id: 250
   eval:
     seed: ${runner.seed}
-    total_num_envs: 10
+    total_num_envs: 20
     max_episode_steps: 240
     group_size: 1
     is_eval: True
     use_step_penalty: True
     use_rel_reward: False
     use_ordered_reset_state_ids: True
-    specific_reset_id: 0
+    specific_reset_id: 250
 
 model:
   model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
@@ -96,7 +96,7 @@ training:
 
 runner:
   seed: 42
-  max_epochs: 200
+  max_epochs: 500
   eval_interval: 10
   save_interval: 10
   resume_from: null
