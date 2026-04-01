@@ -27,6 +27,7 @@ openpi:
   action_env_dim: ${model.action_dim}
   noise_method: "flow_sde"
   add_value_head: ${model.add_value_head}
+  value_head_hidden_sizes: [1024, 512, 256]
   value_after_vlm: True
   value_vlm_mode: "mean_token"
   detach_critic_input: null
