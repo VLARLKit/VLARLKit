@@ -68,6 +68,7 @@ class OpenPi0RLConfig(Pi0Config):
     add_value_head: bool = False  # add value head for ppo
     value_after_vlm: bool = False  # value after vlm, pi05 mode
     value_vlm_mode: str = "mean_token"  # last_token, mean_token, first_token
+    value_head_hidden_sizes: tuple = field(default_factory=lambda: (1024, 512, 256))
 
 
 class OpenPi0ForRL(PI0Pytorch, BaseModel):
@@ -92,6 +93,8 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
             ]
         if self.config.noise_method == "flow_noise":
             no_split_modules.append("ExploreNoiseNet")
+        if self.config.add_value_head:
+            no_split_modules.append("ValueHead")
         return no_split_modules
 
     @property
@@ -130,16 +133,11 @@ class OpenPi0ForRL(PI0Pytorch, BaseModel):
             proj_width = 1024
         # value head
         if self.config.add_value_head:
-            if self.config.config_name in ["pi05_maniskill", "pi05_libero"]:
-                value_head_hidden_sizes = (1024, 512, 256)
-            else:
-                value_head_hidden_sizes = (512, 256, 128)
-            value_head_activation = "relu"
             self.value_head = ValueHead(
                 input_dim=proj_width,
-                hidden_sizes=value_head_hidden_sizes,
+                hidden_sizes=self.config.value_head_hidden_sizes,
                 output_dim=1,
-                activation=value_head_activation,
+                activation="relu",
                 bias_last=True,
             )
         self.use_vlm_value = getattr(self.config, "value_after_vlm", False) and getattr(

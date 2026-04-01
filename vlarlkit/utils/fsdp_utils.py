@@ -8,7 +8,6 @@ import torch.distributed as dist
 from torch.distributed.fsdp import BackwardPrefetch, FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import MixedPrecision, ShardingStrategy
 from torch.distributed.fsdp.wrap import (
-    _module_wrap_policy,
     _or_policy,
     lambda_auto_wrap_policy,
     transformer_auto_wrap_policy,
@@ -23,12 +22,10 @@ logger = logging.getLogger(__name__)
 def get_fsdp_wrap_policy(model: torch.nn.Module):
     """Build a combined FSDP auto-wrap policy from model attributes.
 
-    Combines three kinds of sub-policies with an OR logic:
+    Combines two kinds of sub-policies with an OR logic:
     1. transformer_auto_wrap_policy  – wraps modules whose *class* is listed
-       in ``model._no_split_modules`` (e.g. ``GemmaDecoderLayer``).
-    2. _module_wrap_policy           – wraps ``ValueHead`` (if present) so its
-       float32 params stay in their own FSDP unit.
-    3. lambda_auto_wrap_policy       – wraps modules whose ``_fsdp_wrap_name``
+       in ``model._no_split_modules`` (e.g. ``GemmaDecoderLayer``, ``ValueHead``).
+    2. lambda_auto_wrap_policy       – wraps modules whose ``_fsdp_wrap_name``
        is listed in ``model._no_split_names`` (e.g. ``action_in_proj``).
 
     All built-in PyTorch wrap policies correctly handle the ``recurse`` flag:
@@ -57,15 +54,7 @@ def get_fsdp_wrap_policy(model: torch.nn.Module):
                 )
             )
 
-    # --- 2) ValueHead as its own FSDP unit (float32, avoids dtype mixing) ---
-    if hasattr(model, "value_head"):
-        from vlarlkit.models.modules.value_head import ValueHead
-
-        policies.append(
-            functools.partial(_module_wrap_policy, module_classes={ValueHead})
-        )
-
-    # --- 3) Modules identified by _fsdp_wrap_name in _no_split_names ---
+    # --- 2) Modules identified by _fsdp_wrap_name in _no_split_names ---
     no_split_names = getattr(model, "_no_split_names", None)
     if no_split_names:
 
