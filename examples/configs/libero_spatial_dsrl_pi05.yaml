@@ -14,7 +14,7 @@ algorithm:
   gamma: 0.999
   tau: 0.005
   backup_entropy: False
-  agg_q: mean
+  agg_q: redq
   critic_actor_ratio: 1
   auto_entropy_tuning: True
   initial_alpha: 1.0
@@ -23,7 +23,7 @@ algorithm:
   alpha_clip_grad: 10.0
 
   # Training
-  utd_ratio: 1.0
+  utd_ratio: 4.0
   global_warmup_steps: 1000
   global_replay_buffer_size: 100000
   global_batch_size: 512 # global_bs = (micro_bs * gradient_accumulation_steps) * world_size
@@ -45,17 +45,17 @@ env:
     use_rel_reward: False
     use_step_penalty: True
     use_ordered_reset_state_ids: True
-    specific_reset_id: 0
+    specific_reset_id: 250
   eval:
     seed: ${runner.seed}
-    total_num_envs: 10
+    total_num_envs: 20
     max_episode_steps: 240
     group_size: 1
     is_eval: True
     use_step_penalty: True
     use_rel_reward: False
     use_ordered_reset_state_ids: True
-    specific_reset_id: 0
+    specific_reset_id: 250
 
 model:
   model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
@@ -95,7 +95,7 @@ training:
 
 runner:
   seed: 42
-  max_epochs: 200
+  max_epochs: 500
   eval_interval: 10
   save_interval: 10
   resume_from: null
