@@ -16,13 +16,16 @@ class RandomCrop(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, C, H, W = x.shape
         padded = F.pad(x, [self._pad] * 4, mode="replicate")
-        # Random crop offsets per image
+        pW = W + 2 * self._pad
+
         crop_h = torch.randint(0, 2 * self._pad + 1, (B,), device=x.device)
         crop_w = torch.randint(0, 2 * self._pad + 1, (B,), device=x.device)
-        # Gather crops (vectorized via arange indexing)
-        rows = torch.arange(H, device=x.device).unsqueeze(0) + crop_h.unsqueeze(1)
-        cols = torch.arange(W, device=x.device).unsqueeze(0) + crop_w.unsqueeze(1)
-        return padded[:, :, rows.unsqueeze(-1), cols.unsqueeze(-2)]
+
+        h_idx = crop_h[:, None] + torch.arange(H, device=x.device)  # (B, H)
+        w_idx = crop_w[:, None] + torch.arange(W, device=x.device)  # (B, W)
+        flat_idx = (h_idx[:, :, None] * pW + w_idx[:, None, :]).view(B, 1, H * W).expand(-1, C, -1)
+
+        return padded.view(B, C, -1).gather(2, flat_idx).view(B, C, H, W)
 
 
 class ColorJitter(nn.Module):
