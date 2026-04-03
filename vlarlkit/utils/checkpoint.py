@@ -45,6 +45,9 @@ def save_checkpoint(
 
     model_state = _extract_fsdp_state_dict(policy.get_model())
 
+    has_target = hasattr(policy, "get_target_model")
+    target_state = _extract_fsdp_state_dict(policy.get_target_model()) if has_target else None
+
     if rank == 0:
         os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -54,6 +57,8 @@ def save_checkpoint(
             "policy_state": policy.state_dict(),
             "wandb_run_id": wandb_run_id,
         }
+        if target_state is not None:
+            save_dict["target_model_state_dict"] = target_state
 
         # Atomic write via temp file + rename
         dst = os.path.join(ckpt_dir, "latest.pt")
@@ -93,6 +98,8 @@ def load_checkpoint(
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
     _load_fsdp_state_dict(policy.get_model(), ckpt.pop("model_state_dict"))
+    if "target_model_state_dict" in ckpt and hasattr(policy, "get_target_model"):
+        _load_fsdp_state_dict(policy.get_target_model(), ckpt.pop("target_model_state_dict"))
     policy.load_state_dict(ckpt.pop("policy_state"))
 
     if replay_buffer is not None:
