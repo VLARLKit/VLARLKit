@@ -255,13 +255,13 @@ class DSRLPolicy:
 
         with torch.no_grad():
             next_actions, next_log_pi, _ = self.model(
-                forward_type="actor", obs=next_obs, aug_img=True,
+                forward_type="actor", obs=next_obs, aug_img=False,
             )
             if next_log_pi.ndim == 1:
                 next_log_pi = next_log_pi.unsqueeze(-1)
 
             target_q = self._target_model(
-                forward_type="critic", obs=next_obs, actions=next_actions, aug_img=True,
+                forward_type="critic", obs=next_obs, actions=next_actions, aug_img=False,
             )
 
             qf_next = aggregate_q(target_q, self._agg_q)
@@ -275,7 +275,7 @@ class DSRLPolicy:
             )
 
         current_q = self.model(
-            forward_type="critic", obs=obs, actions=actions, aug_img=True,
+            forward_type="critic", obs=obs, actions=actions, aug_img=False,
         )
 
         target_q_values = target_q_values.to(dtype=current_q.dtype)
@@ -286,7 +286,7 @@ class DSRLPolicy:
     def _compute_actor_loss(self, obs):
         """Compute actor loss and return log_pi for alpha reuse."""
         pi, log_pi, q_values = self.model(
-            forward_type="actor_critic", obs=obs, aug_img=True,
+            forward_type="actor_critic", obs=obs, aug_img=False,
             detach_encoder=True,
         )
         if log_pi.ndim == 1:
