@@ -10,4 +10,5 @@
 **/outputs
 **/wandb
 **/.venv
+env_clients/maniskill/assets
 .claude
