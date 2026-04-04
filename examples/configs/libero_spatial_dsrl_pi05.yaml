@@ -23,7 +23,7 @@ algorithm:
   alpha_clip_grad: 10.0
 
   # Training
-  utd_ratio: 4.0
+  utd_ratio: 1.0
   global_warmup_steps: 1000
   global_replay_buffer_size: 100000
   global_batch_size: 512 # global_bs = (micro_bs * gradient_accumulation_steps) * world_size
