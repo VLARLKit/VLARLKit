@@ -10,12 +10,14 @@ Usage:
 
 import argparse
 import importlib
+import io
 import logging
 import os
 import pickle
 import signal
 import sys
 
+import torch
 import zmq
 from hydra import compose, initialize_config_dir
 
@@ -63,12 +65,26 @@ class EnvServer:
         logger.info("Listening on tcp://%s:%d", host, port)
         logger.info("Registered env_modes: %s", list(self.envs.keys()))
 
+    @staticmethod
+    def _safe_pickle_loads(data):
+        """pickle.loads that remaps CUDA tensors to the local default device."""
+        _orig = torch.storage._load_from_bytes
+
+        def _patched(b):
+            return torch.load(io.BytesIO(b), map_location="cuda", weights_only=False)
+
+        torch.storage._load_from_bytes = _patched
+        try:
+            return pickle.loads(data)
+        finally:
+            torch.storage._load_from_bytes = _orig
+
     def serve_forever(self):
         logger.info("Ready to serve requests.")
         try:
             while True:
                 raw = self.socket.recv()
-                msg = pickle.loads(raw)
+                msg = self._safe_pickle_loads(raw)
                 response = self._dispatch(msg)
                 self.socket.send(pickle.dumps(response, protocol=pickle.HIGHEST_PROTOCOL))
         except KeyboardInterrupt:

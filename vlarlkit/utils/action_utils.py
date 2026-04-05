@@ -39,7 +39,7 @@ def prepare_actions_for_maniskill(
     actions = {k: torch.tensor(v, dtype=torch.float32) for k, v in actions.items()}
     actions = torch.cat(
         [actions["world_vector"], actions["rot_axangle"], actions["gripper"]], dim=1
-    ).cuda()
+    )
 
     chunk_actions = actions.reshape(-1, num_action_chunks, action_dim)
 
