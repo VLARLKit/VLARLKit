@@ -1,0 +1,33 @@
+env_type: maniskill
+
+total_num_envs: null
+
+seed: 0
+auto_reset: False
+ignore_terminations: False
+use_rel_reward: False
+reward_mode: default       # raw / only_success / default
+use_full_state: False
+wrap_obs_mode: default     # raw / simple / default
+group_size: 1
+use_fixed_reset_state_ids: False
+
+video_cfg:
+  save_video: False
+  info_on_video: True
+
+init_params:
+  id: PutOnPlateInScene25Main-v3
+  num_envs: null # will be set in ManiSkillEnv init
+  obs_mode: "rgb+segmentation"
+  control_mode: None
+  sim_backend: "gpu"
+  sim_config:
+    sim_freq: 500
+    control_freq: 5
+  max_episode_steps: ${env.train.max_episode_steps}
+  sensor_configs:
+    shader_pack: "default"
+  render_mode: all
+  obj_set: train
+  use_multiple_plates: False

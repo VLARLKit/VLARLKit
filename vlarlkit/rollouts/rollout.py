@@ -2,6 +2,7 @@ from typing import Any
 
 from vlarlkit.data.io_struct import RolloutResult
 from vlarlkit.utils.conversion_utils import to_numpy
+from vlarlkit.utils.action_utils import prepare_actions
 
 import torch
 import numpy as np
@@ -35,6 +36,14 @@ class Rollout:
         for _ in range(num_chunk_steps):
             with torch.no_grad():
                 actions, info = self.actor_model.predict_action_batch(obs, mode=self.mode)
+            actions = prepare_actions(
+                raw_chunk_actions=actions,
+                env_type=self.cfg.env[self.mode].env_type,
+                model_type=self.cfg.model.model_type, 
+                num_action_chunks=self.cfg.model.num_action_chunks,
+                action_dim=self.cfg.model.action_dim,
+                policy=self.cfg.model.get("policy_setup", None)
+            )
             next_obs, rewards, terminations, truncations, env_info = self.env.chunk_step(actions)
 
             if self._is_onpolicy:

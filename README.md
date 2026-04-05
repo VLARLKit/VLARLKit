@@ -14,7 +14,7 @@ An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) m
 |---|---|
 | **RL Algorithms** | [PPO](https://arxiv.org/abs/1707.06347) (on-policy), [DSRL](https://arxiv.org/pdf/2506.15799) (off-policy), [RLT](https://www.pi.website/download/rlt.pdf) (off-policy) |
 | **Base Models** | [π₀.₅](https://github.com/Physical-Intelligence/openpi) |
-| **Benchmarks** | [LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO) |
+| **Benchmarks** | [LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO), [ManiSkill](https://github.com/haosulab/ManiSkill)|
 
 ## Installation
 
@@ -40,6 +40,9 @@ Install scripts for each benchmark are located in the `third_party/` directory. 
 ```bash
 # LIBERO
 bash third_party/install_libero.sh
+
+# ManiSkill
+bash third_party/install_maniskill.sh
 ```
 
 ### Quick Start
@@ -48,7 +51,10 @@ RL process is typically performing on a SFT model. So you need to download such 
 We highly recommend you to use models from RLinf community.
 
 ```bash
-huggingface-cli download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
+hf download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
+
+# For ManiSkill SFT model:
+# hf download RLinf/RLinf-Pi05-ManiSkill-25Main-SFT --local-dir <your local path>
 ```
 
 Then, change the ``model_path`` and ``assets_dir`` in config file (examples/configs/libero_spatial_ppo_pi05.yaml) to your path.
@@ -68,7 +74,7 @@ bash examples/run_onpolicy_rl.sh
 
 ## TODO
 
-- [ ] Add CALVIN and ManiSkill benchmark support
+- [x] Add ManiSkill benchmark support
 - [ ] Add GRPO algorithm support
 - [x] Add off-policy asynchronous training support
 - [ ] Add OpenVLA base model support
