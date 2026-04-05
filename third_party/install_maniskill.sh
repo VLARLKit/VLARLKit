@@ -1,22 +1,28 @@
 #!/bin/bash
 # Install ManiSkill benchmark environment
 
-conda create -n maniskill python=3.10 -y
-conda activate maniskill
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+mkdir "$SCRIPT_DIR/maniskill" && cd "$SCRIPT_DIR/maniskill"
 
-pip install --upgrade mani_skill torch zmq omegaconf hydra-core huggingface_hub[cli]
-pip install "numpy==1.26.4"
-sudo apt-get install -y libvulkan1 vulkan-tools
+uv init --no-workspace .
+uv venv
+source .venv/bin/activate
 
-# conda install conda-forge::vulkan-tools conda-forge::vulkan-headers
-# export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json
+uv pip install --no-cache "mani_skill==3.0.0b22" zmq omegaconf hydra-core huggingface_hub[cli]
+uv pip uninstall torch
+uv pip install --no-cache torch --index-url https://download.pytorch.org/whl/cu128
+uv pip install --no-cache "numpy==1.26.4"
 
 # Download ManiSkill built-in assets
-python -m mani_skill.utils.download_asset bridge_v2_real2sim
-python -m mani_skill.utils.download_asset widowx250s
+uv run --no-sync python -m mani_skill.utils.download_asset bridge_v2_real2sim
+uv run --no-sync python -m mani_skill.utils.download_asset widowx250s
 
 # Download RLinf custom task assets (carrot, plate, table, etc.)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-hf download --repo-type dataset RLinf/maniskill_assets --local-dir "$SCRIPT_DIR/../env_clients/maniskill/assets"
+uv run --no-sync hf download --repo-type dataset RLinf/maniskill_assets --local-dir "$SCRIPT_DIR/../env_clients/maniskill/assets"
 
-conda deactivate
+# Download PhysX precompiled library
+wget https://github.com/sapien-sim/physx-precompiled/releases/download/105.1-physx-5.3.1.patch0/linux-so.zip -O /tmp/linux-so.zip
+mkdir -p /home/s/sunyh/.sapien/physx/105.1-physx-5.3.1.patch0
+unzip /tmp/linux-so.zip -d /home/s/sunyh/.sapien/physx/105.1-physx-5.3.1.patch0
+
+deactivate
