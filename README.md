@@ -70,7 +70,6 @@ git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-ManiSkill-25Main-SFT
 mkdir $HOME/.cache/openpi/big_vision
 wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
   "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
->>>>>>> b843121 (cluster-specific installation config)
 ```
 
 Then, change the ``model_path`` and ``assets_dir`` in config file (examples/configs/libero_spatial_ppo_pi05.yaml) to your path.
