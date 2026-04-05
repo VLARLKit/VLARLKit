@@ -20,7 +20,7 @@ init_params:
   id: PutOnPlateInScene25Main-v3
   num_envs: null # will be set in ManiSkillEnv init
   obs_mode: "rgb+segmentation"
-  control_mode: None
+  control_mode: "arm_pd_ee_target_delta_pose_align2_gripper_pd_joint_pos"
   sim_backend: "gpu"
   sim_config:
     sim_freq: 500
