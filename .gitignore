@@ -11,5 +11,5 @@
 **/wandb
 **/.venv
 env_clients/maniskill/assets
-third_party/robotwin/
+third_party/maniskill
 .claude

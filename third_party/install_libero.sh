@@ -66,4 +66,3 @@ uv pip install \
 uv pip install -e .
 
 echo "==> LIBERO installation complete!"
->>>>>>> e60c747 (cluster-specific installation config)
