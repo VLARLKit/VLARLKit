@@ -15,7 +15,7 @@ algorithm:
   rollout_epochs: 8
   eval_rollout_epochs: 25  # used when runner.eval_interval > 0
 
-  update_epochs: 1
+  update_epochs: 4
   global_mini_batch_size: 2048 # global_mini_bs = (micro_bs * gradient_accumulation_steps) * world_size
   micro_batch_size: 128 # bs per rank per forward pass
   adv_type: gae
