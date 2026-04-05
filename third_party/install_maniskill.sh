@@ -16,4 +16,4 @@ python -m mani_skill.utils.download_asset widowx250s
 
 # Download RLinf custom task assets (carrot, plate, table, etc.)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-huggingface-cli download --repo-type dataset RLinf/maniskill_assets --local-dir "$SCRIPT_DIR/../env_clients/maniskill/assets"
+hf download --repo-type dataset RLinf/maniskill_assets --local-dir "$SCRIPT_DIR/../env_clients/maniskill/assets"
