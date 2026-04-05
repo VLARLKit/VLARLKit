@@ -4,7 +4,8 @@
 conda create -n maniskill python=3.10 -y
 conda activate maniskill
 
-pip install --upgrade mani_skill torch zmq omegaconf huggingface_hub[cli]
+pip install --upgrade mani_skill torch zmq omegaconf hydra-core huggingface_hub[cli]
+pip install "numpy==1.26.4"
 sudo apt-get install -y libvulkan1 vulkan-tools
 
 # conda install conda-forge::vulkan-tools conda-forge::vulkan-headers
@@ -17,3 +18,5 @@ python -m mani_skill.utils.download_asset widowx250s
 # Download RLinf custom task assets (carrot, plate, table, etc.)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 hf download --repo-type dataset RLinf/maniskill_assets --local-dir "$SCRIPT_DIR/../env_clients/maniskill/assets"
+
+conda deactivate
