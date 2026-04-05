@@ -1,18 +1,21 @@
 #!/bin/bash
-eval "$(conda shell.bash hook)"
+
+module load gcc opencv
+PROJECT_ROOT=$SCRATCH/VLARLKit
+CONFIG_NAME="maniskill_ppo_pi05"
+CONFIG="$PROJECT_ROOT/examples/configs/${CONFIG_NAME}.yaml"
 
 # launch the environment client
-conda activate libero
-python -m env_clients.client \
-    --config examples/configs/libero_spatial_ppo_pi05.yaml \
+cd $SCRATCH/VLARLKit/third_party/maniskill
+PYTHONPATH=$PROJECT_ROOT uv run --no-sync python -m env_clients.client \
+    --config $CONFIG \
     --host 0.0.0.0 --port 5550 \
     --rank 0 --world_size 1 &
 ENV_PID=$!
-conda deactivate
 
 # launch the rollout worker
-source .venv/bin/activate
-python tests/test_rollout.py
+cd $SCRATCH/VLARLKit
+uv run --no-sync python tests/test_rollout.py --config-name $CONFIG_NAME
 
 # kill the env client process
 kill $ENV_PID 2>/dev/null
