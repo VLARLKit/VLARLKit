@@ -48,7 +48,7 @@ env:
     use_fixed_reset_state_ids: True
 
 model:
-  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-ManiSkill-25Main-SFT"
+  model_path: "/scratch/s/sunyh/RLinf-Pi05-ManiSkill-25Main-SFT"
   num_action_chunks: 5
   action_dim: 7
   use_proprio: True
@@ -68,7 +68,7 @@ model:
     name: "maniskill"
     repo_id: "physical-intelligence/maniskill" # does not matter, only assets_dir is used
     prompt_from_task: True
-    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-ManiSkill-25Main-SFT/physical-intelligence/maniskill"
+    assets_dir: "/scratch/s/sunyh/RLinf-Pi05-ManiSkill-25Main-SFT/physical-intelligence/maniskill"
     extra_delta_transform: False
 
   policy_setup: widowx_bridge
