@@ -1,6 +1,6 @@
 defaults:
-  - envs/libero_spatial@env.train
-  - envs/libero_spatial@env.eval
+  - envs/libero_10@env.train
+  - envs/libero_10@env.eval
   - models/pi05_for_rl@model
 
 hydra:
@@ -37,22 +37,22 @@ env:
   train:
     seed: ${runner.seed}
     total_num_envs: 64
-    max_episode_steps: 240 # max episode steps for truncation
+    max_episode_steps: 480 # max episode steps for truncation
     reward_coef: ${algorithm.reward_coef}
   eval:
     seed: ${runner.seed}
     total_num_envs: 20
-    max_episode_steps: 240
+    max_episode_steps: 480
     group_size: 1
     is_eval: True
 
 
 model:
   model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
-  num_action_chunks: 5
+  num_action_chunks: 10
   action_dim: 7
   use_proprio: True
-  num_steps: 3
+  num_steps: 5
   add_value_head: True
 
   openpi:
@@ -101,4 +101,4 @@ runner:
   is_debug: False # if True, it will not generate any log files
   logger:
     project: "VLARLKit"
-    experiment_name: "libero_spatial_ppo_pi05"
+    experiment_name: "libero_10_ppo_pi05"
