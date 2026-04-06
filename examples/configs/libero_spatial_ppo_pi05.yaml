@@ -44,7 +44,7 @@ env:
     total_num_envs: 20
     max_episode_steps: 240
     group_size: 1
-    is_eval: True
+    use_ordered_reset_state_ids: True
 
 
 model:
