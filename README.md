@@ -33,6 +33,7 @@ We use [uv](https://docs.astral.sh/uv/) to manage Python dependencies. See the [
 ```bash
 git clone https://github.com/VLARLKit/VLARLKit.git
 cd VLARLKit
+module load git-lfs
 GIT_LFS_SKIP_SMUDGE=1 uv sync
 uv pip install -e .
 # Apply the transformers library patches for openpi
@@ -59,10 +60,16 @@ RL process is typically performing on a SFT model. So you need to download such 
 We highly recommend you to use models from RLinf community.
 
 ```bash
-hf download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
+# download sft openpi model
+cd $SCRATCH
+module load git-lfs
+git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-SFT
+git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-ManiSkill-25Main-SFT
 
-# For ManiSkill SFT model:
-# hf download RLinf/RLinf-Pi05-ManiSkill-25Main-SFT --local-dir <your local path>
+# download tokenizer of openpi model
+wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
+  "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
+>>>>>>> b843121 (cluster-specific installation config)
 ```
 
 Then, change the ``model_path`` and ``assets_dir`` in config file (examples/configs/libero_spatial_ppo_pi05.yaml) to your path.
