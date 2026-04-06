@@ -58,7 +58,6 @@ model:
     config_name: "pi05_maniskill"
     num_images_in_input: 1
     value_after_vlm: True
-    detach_critic_input: True
     action_horizon: 8
 
   data:
