@@ -67,6 +67,7 @@ model:
   openpi:
     config_name: "pi05_libero"
     num_images_in_input: 2
+    action_horizon: 10
 
   data:
     name: "libero"

@@ -19,6 +19,7 @@ openpi:
   pi05: True
   config_name: "pi05_libero"
   num_images_in_input: 2
+  action_horizon: 10
   action_chunk: ${model.num_action_chunks}
   num_steps: ${model.num_steps}
   train_expert_only: True
