@@ -16,7 +16,7 @@ is_eval: False
 
 seed: 0
 group_size: 1
-# use_fixed_reset_state_ids: True
+use_fixed_reset_state_ids: False
 use_ordered_reset_state_ids: False
 
 # Indicate the reset state id (related to the task_id and trial_id) want to be specified. (e.g. 

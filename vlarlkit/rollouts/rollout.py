@@ -84,7 +84,8 @@ class Rollout:
                 self.rollout_result.build_next_forward_inputs()
         
         # Update reset state ids for next epoch rollouts
-        self.env.update_reset_state_ids()
+        if not self.cfg.env[self.mode].use_fixed_reset_state_ids:
+            self.env.update_reset_state_ids()
 
         return env_info["episode"]
 

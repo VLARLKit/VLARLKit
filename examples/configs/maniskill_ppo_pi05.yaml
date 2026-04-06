@@ -44,6 +44,7 @@ env:
     total_num_envs: 160
     max_episode_steps: 80
     group_size: 1
+    use_fixed_reset_state_ids: True
 
 model:
   model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-ManiSkill-25Main-SFT"
