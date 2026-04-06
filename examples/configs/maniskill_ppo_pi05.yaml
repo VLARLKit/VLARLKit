@@ -12,10 +12,10 @@ algorithm:
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1
   reward_coef: 1.0
-  rollout_epochs: 2
-  eval_rollout_epochs: 2  # used when runner.eval_interval > 0
+  rollout_epochs: 1
+  eval_rollout_epochs: 1  # used when runner.eval_interval > 0
 
-  update_epochs: 4
+  update_epochs: 5
   global_mini_batch_size: 5120 # global_mini_bs = (micro_bs * gradient_accumulation_steps) * world_size
   micro_batch_size: 32 # bs per rank per forward pass
   adv_type: gae
@@ -36,12 +36,12 @@ env:
   env_client_base_port: 5550
   train:
     seed: ${runner.seed}
-    total_num_envs: 160
+    total_num_envs: 320
     max_episode_steps: 80 # max episode steps for truncation
     reward_coef: ${algorithm.reward_coef}
   eval:
     seed: ${runner.seed}
-    total_num_envs: 160
+    total_num_envs: 320
     max_episode_steps: 80
     group_size: 1
     use_fixed_reset_state_ids: True
@@ -95,7 +95,7 @@ training:
 
 runner:
   seed: 0
-  max_epochs: 100
+  max_epochs: 200
   eval_interval: 5
   save_interval: 10
   resume_from: null
