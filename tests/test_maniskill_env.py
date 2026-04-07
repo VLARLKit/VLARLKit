@@ -20,7 +20,6 @@ from env_clients.maniskill.maniskill_env import ManiskillEnv
 def make_cfg(num_envs: int, max_episode_steps: int):
     cfg = OmegaConf.create({
         "seed": 0,
-        "auto_reset": False,
         "ignore_terminations": False,
         "use_rel_reward": False,
         "reward_mode": "default",

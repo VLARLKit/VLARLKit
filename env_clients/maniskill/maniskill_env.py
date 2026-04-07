@@ -17,7 +17,6 @@
 #   Modified by VLARLKit Authors.
 # --------------------------------------------------------------------
 
-import copy
 from typing import Optional, OrderedDict, Union
 
 import gymnasium as gym
@@ -47,7 +46,6 @@ class ManiskillEnv(gym.Env):
         self.rank = rank
         self.seed = cfg.seed + rank
         self.total_num_processes = total_num_processes
-        self.auto_reset = cfg.auto_reset
         self.use_rel_reward = cfg.use_rel_reward
         self.ignore_terminations = cfg.ignore_terminations
         self.use_full_state = bool(getattr(cfg, "use_full_state", False))
@@ -268,7 +266,7 @@ class ManiskillEnv(gym.Env):
         return extracted_obs, recursive_to_numpy(infos)
 
     def step(
-        self, actions: Union[Array, dict] = None, auto_reset=True
+        self, actions: Union[Array, dict] = None,
     ) -> tuple[Array, Array, Array, Array, dict]:
         raw_obs, _reward, terminations, truncations, infos = self.env.step(actions)
         extracted_obs = self._wrap_obs(raw_obs, infos=infos)
@@ -286,11 +284,6 @@ class ManiskillEnv(gym.Env):
                 infos["episode"]["fail_at_end"] = infos["fail"].cpu().numpy().copy()
             terminations[:] = False
 
-        dones = torch.logical_or(terminations, truncations)
-
-        _auto_reset = auto_reset and self.auto_reset
-        if dones.any() and _auto_reset:
-            extracted_obs, infos = self._handle_auto_reset(dones, extracted_obs, infos)
         return (
             extracted_obs,
             step_reward.cpu().numpy().astype(np.float32),
@@ -308,7 +301,7 @@ class ManiskillEnv(gym.Env):
         for i in range(chunk_size):
             actions = chunk_actions[:, i]
             extracted_obs, step_reward, terminations, truncations, infos = self.step(
-                actions, auto_reset=False
+                actions
             )
 
             chunk_rewards.append(step_reward)
@@ -321,14 +314,8 @@ class ManiskillEnv(gym.Env):
 
         past_terminations = raw_chunk_terminations.any(axis=1)
         past_truncations = raw_chunk_truncations.any(axis=1)
-        past_dones = np.logical_or(past_terminations, past_truncations)
 
-        if past_dones.any() and self.auto_reset:
-            extracted_obs, infos = self._handle_auto_reset(
-                past_dones, extracted_obs, infos
-            )
-
-        if self.auto_reset or self.ignore_terminations:
+        if self.ignore_terminations:
             chunk_terminations = np.zeros_like(raw_chunk_terminations)
             chunk_terminations[:, -1] = past_terminations
 
@@ -344,24 +331,6 @@ class ManiskillEnv(gym.Env):
             chunk_truncations,
             infos,
         )
-
-    def _handle_auto_reset(self, dones, extracted_obs, infos):
-        if isinstance(dones, np.ndarray):
-            dones = torch.from_numpy(dones).to(self.device)
-        final_obs = copy.deepcopy(extracted_obs)
-        env_idx = torch.arange(0, self.num_envs, device=self.device)[dones]
-        options = {"env_idx": env_idx}
-        final_info = copy.deepcopy(infos)
-        if self.use_fixed_reset_state_ids:
-            options.update(episode_id=self.reset_state_ids[env_idx])
-        extracted_obs, infos = self.reset(options=options)
-        # gymnasium calls it final observation but it really is just o_{t+1} or the true next observation
-        infos["final_observation"] = final_obs
-        infos["final_info"] = final_info
-        infos["_final_info"] = dones.cpu().numpy()
-        infos["_final_observation"] = dones.cpu().numpy()
-        infos["_elapsed_steps"] = dones.cpu().numpy()
-        return extracted_obs, infos
 
     def run(self):
         obs, info = self.reset()

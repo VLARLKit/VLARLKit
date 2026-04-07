@@ -18,7 +18,6 @@
 # --------------------------------------------------------------------
 from __future__ import annotations
 
-import copy
 import os
 from typing import Optional, Union
 
@@ -57,7 +56,6 @@ class LiberoEnv(gym.Env):
         self.specific_reset_id = cfg.get("specific_reset_id", None)
 
         self.ignore_terminations = cfg.ignore_terminations
-        self.auto_reset = cfg.auto_reset
 
         self._generator = np.random.default_rng(seed=self.seed)
         self._generator_ordered = np.random.default_rng(seed=0)
@@ -327,7 +325,7 @@ class LiberoEnv(gym.Env):
         infos = {}
         return obs, infos
 
-    def step(self, actions=None, auto_reset=True):
+    def step(self, actions=None):
         """Step the environment with the given actions."""
         if isinstance(actions, torch.Tensor):
             actions = actions.detach().cpu().numpy()
@@ -354,10 +352,6 @@ class LiberoEnv(gym.Env):
             infos["episode"]["success_at_end"] = terminations.copy()
             terminations[:] = False
 
-        dones = terminations | truncations
-        _auto_reset = auto_reset and self.auto_reset
-        if dones.any() and _auto_reset:
-            obs, infos = self._handle_auto_reset(dones, obs, infos)
         return (
             obs,
             step_reward.astype(np.float32),
@@ -378,7 +372,7 @@ class LiberoEnv(gym.Env):
         for i in range(chunk_size):
             actions = chunk_actions[:, i]
             extracted_obs, step_reward, terminations, truncations, infos = self.step(
-                actions, auto_reset=False
+                actions
             )
 
             chunk_rewards.append(step_reward)
@@ -391,14 +385,8 @@ class LiberoEnv(gym.Env):
 
         past_terminations = raw_chunk_terminations.any(axis=1)
         past_truncations = raw_chunk_truncations.any(axis=1)
-        past_dones = np.logical_or(past_terminations, past_truncations)
 
-        if past_dones.any() and self.auto_reset:
-            extracted_obs, infos = self._handle_auto_reset(
-                past_dones, extracted_obs, infos
-            )
-
-        if self.auto_reset or self.ignore_terminations:
+        if self.ignore_terminations:
             chunk_terminations = np.zeros_like(raw_chunk_terminations)
             chunk_terminations[:, -1] = past_terminations
 
@@ -414,24 +402,6 @@ class LiberoEnv(gym.Env):
             chunk_truncations,
             infos,
         )
-
-    def _handle_auto_reset(self, dones, _final_obs, infos):
-        final_obs = copy.deepcopy(_final_obs)
-        env_idx = np.arange(0, self.num_envs)[dones]
-        final_info = copy.deepcopy(infos)
-        if self.cfg.is_eval:
-            self.update_reset_state_ids()
-        obs, infos = self.reset(
-            env_idx=env_idx,
-            reset_state_ids=self.reset_state_ids[env_idx]
-        )
-        # gymnasium calls it final observation but it really is just o_{t+1} or the true next observation
-        infos["final_observation"] = final_obs
-        infos["final_info"] = final_info
-        infos["_final_info"] = dones
-        infos["_final_observation"] = dones
-        infos["_elapsed_steps"] = dones
-        return obs, infos
 
     def _calc_step_reward(self, terminations):
         step_penalty = -1.0 if self.use_step_penalty else 0.0

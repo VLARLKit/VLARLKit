@@ -21,7 +21,6 @@ from env_clients.libero.libero_env import LiberoEnv
 def make_cfg(num_envs: int, max_episode_steps: int):
     cfg = OmegaConf.create({
         "seed": 0,
-        "auto_reset": False,
         "ignore_terminations": False,
         "use_rel_reward": True,
         "reward_coef": 1.0,

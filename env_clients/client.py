@@ -54,7 +54,7 @@ class EnvServer:
     })
 
     READABLE_ATTRS = frozenset({
-        "num_envs", "elapsed_steps", "auto_reset",
+        "num_envs", "elapsed_steps",
     })
 
     def __init__(self, host: str, port: int, envs: dict):

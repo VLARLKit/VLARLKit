@@ -121,15 +121,11 @@ class RemoteEnv:
         obs, info = self._call("reset", **kwargs)
         return self.prepare_observations(obs), info
 
-    def step(self, actions=None, auto_reset=True):
+    def step(self, actions=None):
         obs, reward, terminations, truncations, infos = self._call(
-            "step", actions=actions, auto_reset=auto_reset
+            "step", actions=actions
         )
         obs = self.prepare_observations(obs)
-        if "final_observation" in infos:
-            infos["final_observation"] = self.prepare_observations(
-                infos["final_observation"]
-            )
         return obs, reward, terminations, truncations, infos
 
     def chunk_step(self, chunk_actions):
@@ -137,10 +133,6 @@ class RemoteEnv:
             "chunk_step", chunk_actions=chunk_actions
         )
         next_obs = self.prepare_observations(next_obs)
-        if "final_observation" in env_info:
-            env_info["final_observation"] = self.prepare_observations(
-                env_info["final_observation"]
-            )
         return next_obs, rewards, terminations, truncations, env_info
 
     def update_reset_state_ids(self):
@@ -156,10 +148,6 @@ class RemoteEnv:
     @property
     def elapsed_steps(self) -> np.ndarray:
         return self._get_attr("elapsed_steps")
-
-    @property
-    def auto_reset(self) -> bool:
-        return self._get_attr("auto_reset")
 
     def close(self):
         self._socket.close()
