@@ -79,16 +79,16 @@ class RolloutResult:
         self,
         gamma: float,
         gae_lambda: float,
-        last_values: np.ndarray | None = None,
     ):
         """
         Compute returns and advantages using GAE (Generalized Advantage Estimation).
 
+        Bootstrap is handled upstream by embedding gamma * V(next_obs) into
+        the rewards at episode boundaries (see Rollout._get_bootstrap_values).
+
         Args:
             gamma: Discount factor.
             gae_lambda: GAE lambda parameter controlling the bias-variance trade-off.
-            last_values: Value estimate for the last next_obs, shape (n_envs,).
-                         Defaults to zeros (no bootstrapping) if None.
         """
         num_steps = len(self.rewards)
         rewards = np.stack(self.rewards).astype(np.float32)         # (T, n_envs)
@@ -99,16 +99,11 @@ class RolloutResult:
 
         dones = np.logical_or(terminations, truncations)
 
-        if last_values is None:
-            last_values = np.zeros_like(values[0])
-        else:
-            last_values = np.asarray(last_values, dtype=np.float32)
-
         advantages = np.zeros_like(rewards)
         last_gae_lam = np.zeros_like(rewards[0])
 
         for t in reversed(range(num_steps)):
-            next_values = last_values if t == num_steps - 1 else values[t + 1]
+            next_values = np.zeros_like(values[0]) if t == num_steps - 1 else values[t + 1]
             not_done = (~dones[t]).astype(np.float32)
 
             delta = rewards[t] + gamma * next_values * not_done - values[t]

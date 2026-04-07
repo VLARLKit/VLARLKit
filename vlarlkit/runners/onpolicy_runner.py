@@ -83,7 +83,6 @@ class OnPolicyRunner:
             rr.compute_returns_and_advantages(
                 gamma=gamma,
                 gae_lambda=gae_lambda,
-                last_values=None,
             )
 
             if normalize_advantages:

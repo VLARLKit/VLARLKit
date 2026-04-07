@@ -12,6 +12,7 @@ algorithm:
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1
   reward_coef: 1.0
+  bootstrap_type: always  # standard (truncation only), always (truncation + termination)
   rollout_epochs: 1
   eval_rollout_epochs: 1  # used when runner.eval_interval > 0
 
@@ -21,7 +22,7 @@ algorithm:
   adv_type: gae
   loss_type: actor_critic
   kl_beta: 0.0
-  entropy_bonus: 0
+  entropy_bonus: 0.005
   clip_ratio_high: 0.2
   clip_ratio_low: 0.2
   clip_ratio_c: 3.0
@@ -59,6 +60,9 @@ model:
     num_images_in_input: 1
     value_after_vlm: True
     action_horizon: 8
+    noise_method: "flow_noise"
+    noise_params: [0.16, 0.12, 200]
+    joint_logprob: True # False for flow_sde, True for flow_noise     
 
   data:
     name: "maniskill"

@@ -12,6 +12,7 @@ algorithm:
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1
   reward_coef: 1.0
+  bootstrap_type: standard  # standard (truncation only), always (truncation + termination)
   rollout_epochs: 8
   eval_rollout_epochs: 25  # used when runner.eval_interval > 0
 
