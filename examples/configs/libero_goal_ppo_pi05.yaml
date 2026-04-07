@@ -1,0 +1,106 @@
+defaults:
+  - envs/libero_goal@env.train
+  - envs/libero_goal@env.eval
+  - models/pi05_for_rl@model
+
+hydra:
+  run:
+    dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M}
+
+algorithm:
+  normalize_advantages: True
+  kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
+  group_size: 1
+  reward_coef: 1.0
+  bootstrap_type: standard  # standard (truncation only), always (truncation + termination)
+  rollout_epochs: 8
+  eval_rollout_epochs: 25  # used when runner.eval_interval > 0
+
+  update_epochs: 4
+  global_mini_batch_size: 2048 # global_mini_bs = (micro_bs * gradient_accumulation_steps) * world_size
+  micro_batch_size: 128 # bs per rank per forward pass
+  adv_type: gae
+  loss_type: actor_critic
+  kl_beta: 0.0
+  entropy_bonus: 0
+  clip_ratio_high: 0.2
+  clip_ratio_low: 0.2
+  clip_ratio_c: 3.0
+  value_clip: 0.2
+  huber_delta: 10.0
+
+  gamma: 0.99
+  gae_lambda: 0.95
+
+env:
+  env_client_host: "localhost"
+  env_client_base_port: 5550
+  train:
+    seed: ${runner.seed}
+    total_num_envs: 64
+    max_episode_steps: 320 # max episode steps for truncation
+    reward_coef: ${algorithm.reward_coef}
+  eval:
+    seed: ${runner.seed}
+    total_num_envs: 20
+    max_episode_steps: 320
+    group_size: 1
+    use_ordered_reset_state_ids: True
+
+
+model:
+  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
+  num_action_chunks: 5
+  action_dim: 7
+  use_proprio: True
+  num_steps: 5
+  add_value_head: True
+
+  openpi:
+    config_name: "pi05_libero"
+    num_images_in_input: 2
+    value_after_vlm: True
+    noise_level: 0.3
+    action_horizon: 10
+
+  data:
+    name: "libero"
+    repo_id: "physical-intelligence/libero" # does not matter, only assets_dir is used
+    prompt_from_task: True
+    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT/physical-intelligence/libero"
+    extra_delta_transform: False
+
+
+training:
+  optim:
+    lr: 5.0e-6
+    value_lr: 1.0e-4
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    adam_eps: 1.0e-08
+    weight_decay: 0.01
+    clip_grad: 1.0
+    critic_warmup_steps: 0
+    lr_scheduler: "constant" # Learning rate scheduler type. Choices: ["constant", "cosine"]. Default: "constant".
+  
+  fsdp_config:
+    strategy: "fsdp"
+    sharding_strategy: "no_shard"
+    gradient_checkpointing: False # for openpi, gradient checkpointing is not supported, please do not change this value
+    forward_prefetch: False
+    backward_prefetch: null # options: null, "pre", "post"
+    mixed_precision:
+      param_dtype: ${model.precision}
+      reduce_dtype: ${model.precision}
+      buffer_dtype: ${model.precision}
+
+runner:
+  seed: 0
+  max_epochs: 300
+  eval_interval: 10
+  save_interval: 10
+  resume_from: null
+  is_debug: False # if True, it will not generate any log files
+  logger:
+    project: "VLARLKit"
+    experiment_name: "libero_goal_ppo_pi05"
