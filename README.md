@@ -6,6 +6,10 @@
 
 An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) models.
 
+<p align="center">
+  <img src="assets/framework.svg" alt="VLARLKit Framework" width="750"/>
+</p>
+
 ## ✨ Features
 
 - **Simple and clear implementation** — cleanly separated policy, rollout, runner, and model layers with minimal abstraction; easy to read, modify, and extend for research purposes
