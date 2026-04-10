@@ -1,14 +1,18 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="VLARLKit Logo" width="400"/>
+</p>
+
 # VLARLKit: An elegant PyTorch VLA-RL library
 
 An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) models.
 
-## Features
+## ✨ Features
 
 - **Simple and clear implementation** — cleanly separated policy, rollout, runner, and model layers with minimal abstraction; easy to read, modify, and extend for research purposes
 - **Environment-decoupled architecture** — environments run as independent processes via ZMQ, eliminating dependency conflicts between different benchmark simulators
 - **Async off-policy training** — supports asynchronous off-policy training, enabling non-blocking data collection alongside model updates
 
-## Supported Algorithms, Base Models, and Benchmarks (Keeping progress)
+## 🧩 Supported Algorithms, Base Models, and Benchmarks (Keeping progress)
 
 | Category | Supported |
 |---|---|
@@ -16,7 +20,7 @@ An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) m
 | **Base Models** | [π₀.₅](https://github.com/Physical-Intelligence/openpi) |
 | **Benchmarks** | [LIBERO](https://github.com/Lifelong-Robot-Learning/LIBERO), [ManiSkill](https://github.com/haosulab/ManiSkill)|
 
-## Installation
+## 📦 Installation
 
 ### 1. Main Library
 
@@ -45,7 +49,7 @@ bash third_party/install_libero.sh
 bash third_party/install_maniskill.sh
 ```
 
-### Quick Start
+### 🚀 Quick Start
 
 RL process is typically performing on a SFT model. So you need to download such an SFT model first.
 We highly recommend you to use models from RLinf community.
@@ -72,7 +76,7 @@ Now, you can lanuch the script to run!
 bash examples/run_onpolicy_rl.sh
 ```
 
-## TODO
+## 📋 TODO
 
 - [x] Add ManiSkill benchmark support
 - [ ] Add GRPO algorithm support
@@ -80,10 +84,10 @@ bash examples/run_onpolicy_rl.sh
 - [ ] Add OpenVLA base model support
 - [ ] Add offline and model-based VLA methods support
 
-## Acknowledgements
+## 🙏 Acknowledgements
 We borrow some good designs from [RLinf](https://github.com/RLinf/RLinf). The model integration and environment module implementations are primarily adapted from RLinf. We thank the RLinf team for their foundational work.
 
-# License
+# 📄 License
 This project is licensed under the MIT License (see LICENSE file).
 
 Some source files are derived from Apache-2.0 licensed projects. The original copyright notices are preserved in those files.
