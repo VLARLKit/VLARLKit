@@ -7,7 +7,7 @@
 An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) models.
 
 <p align="center">
-  <img src="assets/framework.svg" alt="VLARLKit Framework" width="650"/>
+  <img src="assets/framework.svg" alt="VLARLKit Framework" width="700"/>
 </p>
 
 ## ✨ Features
