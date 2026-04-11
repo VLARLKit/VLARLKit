@@ -1,28 +1,33 @@
 defaults:
-  - envs/libero_spatial@env.train
-  - envs/libero_spatial@env.eval
-  - models/pi05_for_rlt@model
+  - envs/libero_10@env.train
+  - envs/libero_10@env.eval
+  - models/pi05_for_dsrl@model
 
 hydra:
   run:
     dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M}
 
 algorithm:
-  policy_class: rlt
+  policy_class: dsrl
 
-  # TD3 hyperparameters
+  # SAC hyperparameters
   gamma: 0.999
   tau: 0.005
+  backup_entropy: False
   agg_q: redq
-  critic_actor_ratio: 2
-  rlt_alpha: 1.0
+  critic_actor_ratio: 1
+  auto_entropy_tuning: True
+  initial_alpha: 1.0
+  target_entropy: -16
+  alpha_lr: 3.0e-4
+  alpha_clip_grad: 10.0
 
   # Training
   utd_ratio: 1.0
   global_warmup_steps: 1000
   global_replay_buffer_size: 100000
-  global_batch_size: 512
-  micro_batch_size: 128
+  global_batch_size: 512 # global_bs = (micro_bs * gradient_accumulation_steps) * world_size
+  micro_batch_size: 128 # bs per rank & per forward pass
   queue_size: 4
 
   # Rollout
@@ -35,14 +40,14 @@ env:
   train:
     seed: ${runner.seed}
     total_num_envs: 64
-    max_episode_steps: 240
+    max_episode_steps: 480
     reward_coef: 1.0
     use_rel_reward: False
     use_step_penalty: True
   eval:
     seed: ${runner.seed}
     total_num_envs: 20
-    max_episode_steps: 240
+    max_episode_steps: 480
     group_size: 1
     is_eval: True
     use_step_penalty: True
@@ -50,35 +55,31 @@ env:
 
 model:
   model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
-  num_action_chunks: 5
+  num_action_chunks: 10
   action_dim: 7
   use_proprio: True
-  num_steps: 3
+  num_steps: 5
 
   openpi:
     config_name: "pi05_libero"
     num_images_in_input: 2
     action_horizon: 10
-    # RLT-specific
-    rlt_state_dim: 8
-    rlt_hidden_dims: [512, 512, 512]
-    rlt_num_q_heads: 10
-    rlt_ref_action_dropout: 0.5
-    rlt_action_magnitude: 1.0
+    dsrl_hidden_dims: [512, 512, 512]
+    dsrl_num_q_heads: 10
 
   data:
     name: "libero"
-    repo_id: "physical-intelligence/libero"
+    repo_id: "physical-intelligence/libero" # does not matter, only assets_dir is used
     prompt_from_task: True
     assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT/physical-intelligence/libero"
     extra_delta_transform: False
 
 training:
   optim:
-    lr: 1.0e-4
-    value_lr: 3.0e-4
-    clip_grad: 3.5
-    critic_clip_grad: 10.0
+    lr: 1.0e-4            # actor (GaussianPolicy + actor encoders)
+    value_lr: 3.0e-4       # critic (Q-head + critic encoders)
+    clip_grad: 3.5         # actor gradient clipping
+    critic_clip_grad: 10.0 # critic gradient clipping
 
   fsdp_config:
     strategy: "fsdp"
@@ -100,4 +101,4 @@ runner:
   is_debug: False
   logger:
     project: "VLARLKit"
-    experiment_name: "libero_spatial_rlt_pi05"
+    experiment_name: "libero_10_dsrl_pi05"

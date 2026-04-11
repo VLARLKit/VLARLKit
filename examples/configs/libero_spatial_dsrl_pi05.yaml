@@ -27,25 +27,23 @@ algorithm:
   global_warmup_steps: 1000
   global_replay_buffer_size: 100000
   global_batch_size: 512 # global_bs = (micro_bs * gradient_accumulation_steps) * world_size
-  micro_batch_size: 64 # bs per rank & per forward pass
+  micro_batch_size: 128 # bs per rank & per forward pass
   queue_size: 4
 
   # Rollout
   rollout_epochs: 1
-  eval_rollout_epochs: 1
+  eval_rollout_epochs: 25
 
 env:
   env_client_host: "localhost"
   env_client_base_port: 5550
   train:
     seed: ${runner.seed}
-    total_num_envs: 8
+    total_num_envs: 64
     max_episode_steps: 240
     reward_coef: 1.0
     use_rel_reward: False
     use_step_penalty: True
-    use_ordered_reset_state_ids: True
-    specific_reset_id: 250
   eval:
     seed: ${runner.seed}
     total_num_envs: 20
@@ -54,8 +52,6 @@ env:
     is_eval: True
     use_step_penalty: True
     use_rel_reward: False
-    use_ordered_reset_state_ids: True
-    specific_reset_id: 250
 
 model:
   model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
@@ -68,6 +64,8 @@ model:
     config_name: "pi05_libero"
     num_images_in_input: 2
     action_horizon: 10
+    dsrl_hidden_dims: [512, 512, 512]
+    dsrl_num_q_heads: 10
 
   data:
     name: "libero"
