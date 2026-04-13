@@ -9,10 +9,10 @@ hydra:
 
 algorithm:
   policy_class: rlt
-  agg_reward: sum
+  agg_reward: max
 
   # TD3 hyperparameters
-  gamma: 0.99
+  gamma: 0.9
   tau: 0.005
   agg_q: redq
   critic_actor_ratio: 2
