@@ -12,7 +12,6 @@ algorithm:
   normalize_advantages: True
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1
-  reward_coef: 1.0
   bootstrap_type: always  # standard (truncation only), always (truncation + termination)
   rollout_epochs: 1
   eval_rollout_epochs: 1  # used when runner.eval_interval > 0
@@ -40,7 +39,6 @@ env:
     seed: ${runner.seed}
     total_num_envs: 320
     max_episode_steps: 80 # max episode steps for truncation
-    reward_coef: ${algorithm.reward_coef}
   eval:
     seed: ${runner.seed}
     total_num_envs: 320
