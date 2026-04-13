@@ -186,6 +186,8 @@ class ManiskillEnv(gym.Env):
             pass
         elif getattr(self.cfg, "reward_mode", "default") == "only_success":
             reward = info["success"] * 1.0
+        elif getattr(self.cfg, "reward_mode", "default") == "penalty":
+            reward = info["success"].float() - 1.0
         else:
             reward = torch.zeros(self.num_envs, dtype=torch.float32).to(
                 self.env.unwrapped.device

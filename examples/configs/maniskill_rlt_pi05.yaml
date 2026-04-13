@@ -38,14 +38,14 @@ env:
     total_num_envs: 64
     max_episode_steps: 80
     use_rel_reward: False
-    reward_mode: raw
+    reward_mode: penalty
   eval:
     seed: ${runner.seed}
     total_num_envs: 320
     max_episode_steps: 80
     group_size: 1
     use_rel_reward: False
-    reward_mode: raw
+    reward_mode: penalty
     use_fixed_reset_state_ids: True
 
 model:
