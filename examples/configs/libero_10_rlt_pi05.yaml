@@ -9,9 +9,10 @@ hydra:
 
 algorithm:
   policy_class: rlt
+  agg_reward: max
 
   # TD3 hyperparameters
-  gamma: 0.999
+  gamma: 0.990045  # 0.999 ** 10 (num_action_chunks)
   tau: 0.005
   agg_q: redq
   critic_actor_ratio: 2

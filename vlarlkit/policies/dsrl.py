@@ -49,7 +49,6 @@ class DSRLPolicy:
         self._tau = float(self._algo_cfg.get("tau", 0.005))
         self._backup_entropy = bool(self._algo_cfg.get("backup_entropy", False))
         self._agg_q = str(self._algo_cfg.get("agg_q", "mean"))
-        self._num_action_chunks = int(cfg.model.get("num_action_chunks", 1))
 
         # Derive gradient accumulation from global/micro batch sizes
         global_bs = self._algo_cfg.get("global_batch_size")
@@ -251,8 +250,6 @@ class DSRLPolicy:
 
     def _compute_critic_loss(self, obs, next_obs, actions, rewards, terminations):
         """Compute critic loss: MSE(Q(s,a), r + gamma * (min Q_target(s', pi(s')) - alpha * log_pi))."""
-        discount = self._gamma ** self._num_action_chunks
-
         with torch.no_grad():
             next_actions, next_log_pi, _ = self.model(
                 forward_type="actor", obs=next_obs, aug_img=False,
@@ -271,7 +268,7 @@ class DSRLPolicy:
 
             target_q_values = (
                 rewards.unsqueeze(-1)
-                + (~terminations.unsqueeze(-1)) * discount * qf_next
+                + (~terminations.unsqueeze(-1)) * self._gamma * qf_next
             )
 
         current_q = self.model(

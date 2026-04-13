@@ -48,7 +48,6 @@ class RLTPolicy:
         self._gamma = float(self._algo_cfg.get("gamma", 0.999))
         self._tau = float(self._algo_cfg.get("tau", 0.005))
         self._agg_q = str(self._algo_cfg.get("agg_q", "min"))
-        self._num_action_chunks = int(cfg.model.get("num_action_chunks", 1))
         self._alpha = float(self._algo_cfg.get("rlt_alpha", 1.0))
 
         # Gradient accumulation
@@ -197,9 +196,7 @@ class RLTPolicy:
         return micro_batches
 
     def _compute_critic_loss(self, obs, next_obs, actions, rewards, terminations):
-        """TD3 critic loss: MSE(Q(s,a), r + gamma^C * min Q_target(s', pi(s')))."""
-        discount = self._gamma ** self._num_action_chunks
-
+        """TD3 critic loss: MSE(Q(s,a), r + gamma * min Q_target(s', pi(s')))."""
         with torch.no_grad():
             next_actions, _, _ = self._target_model(
                 forward_type="actor", obs=next_obs, train=False,
@@ -212,7 +209,7 @@ class RLTPolicy:
 
             target_q_values = (
                 rewards.unsqueeze(-1)
-                + (~terminations.unsqueeze(-1)) * discount * qf_next
+                + (~terminations.unsqueeze(-1)) * self._gamma * qf_next
             )
 
         current_q = self.model(

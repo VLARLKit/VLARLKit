@@ -8,6 +8,7 @@ hydra:
     dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M}
 
 algorithm:
+  agg_reward: sum
   normalize_advantages: True
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1

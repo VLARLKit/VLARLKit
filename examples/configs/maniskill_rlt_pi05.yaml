@@ -1,6 +1,6 @@
 defaults:
-  - envs/libero_spatial@env.train
-  - envs/libero_spatial@env.eval
+  - envs/maniskill_put_on_plate_in_scene_25_main@env.train
+  - envs/maniskill_put_on_plate_in_scene_25_main@env.eval
   - models/pi05_for_rlt@model
 
 hydra:
@@ -9,10 +9,10 @@ hydra:
 
 algorithm:
   policy_class: rlt
-  agg_reward: max
+  agg_reward: sum
 
   # TD3 hyperparameters
-  gamma: 0.995010  # 0.999 ** 5 (num_action_chunks)
+  gamma: 0.99
   tau: 0.005
   agg_q: redq
   critic_actor_ratio: 2
@@ -28,38 +28,36 @@ algorithm:
 
   # Rollout
   rollout_epochs: 1
-  eval_rollout_epochs: 25
+  eval_rollout_epochs: 1
 
 env:
   env_client_host: "localhost"
   env_client_base_port: 5550
   train:
     seed: ${runner.seed}
-    total_num_envs: 64
-    max_episode_steps: 240
+    total_num_envs: 320
+    max_episode_steps: 80
     reward_coef: 1.0
-    use_rel_reward: False
-    use_step_penalty: True
+    ignore_terminations: True
   eval:
     seed: ${runner.seed}
-    total_num_envs: 20
-    max_episode_steps: 240
+    total_num_envs: 320
+    max_episode_steps: 80
     group_size: 1
-    is_eval: True
-    use_step_penalty: True
-    use_rel_reward: False
+    use_fixed_reset_state_ids: True
+    ignore_terminations: True
 
 model:
-  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
+  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-ManiSkill-25Main-SFT"
   num_action_chunks: 5
   action_dim: 7
   use_proprio: True
-  num_steps: 3
+  num_steps: 4
 
   openpi:
-    config_name: "pi05_libero"
-    num_images_in_input: 2
-    action_horizon: 10
+    config_name: "pi05_maniskill"
+    num_images_in_input: 1
+    action_horizon: 8
     # RLT-specific
     rlt_state_dim: 8
     rlt_hidden_dims: [512, 512, 512]
@@ -68,11 +66,13 @@ model:
     rlt_action_magnitude: 1.0
 
   data:
-    name: "libero"
-    repo_id: "physical-intelligence/libero"
+    name: "maniskill"
+    repo_id: "physical-intelligence/maniskill" # does not matter, only assets_dir is used
     prompt_from_task: True
-    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT/physical-intelligence/libero"
+    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-ManiSkill-25Main-SFT/physical-intelligence/maniskill"
     extra_delta_transform: False
+
+  policy_setup: widowx_bridge
 
 training:
   optim:
@@ -101,4 +101,4 @@ runner:
   is_debug: False
   logger:
     project: "VLARLKit"
-    experiment_name: "libero_spatial_rlt_pi05"
+    experiment_name: "maniskill_rlt_pi05"

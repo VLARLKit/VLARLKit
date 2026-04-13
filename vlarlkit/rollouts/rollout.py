@@ -20,6 +20,7 @@ class Rollout:
         self._is_onpolicy = is_onpolicy
         self._bootstrap_type = str(cfg.algorithm.get("bootstrap_type", "none"))
         self._gamma = float(cfg.algorithm.get("gamma", 0.99))
+        self._agg_reward = str(cfg.algorithm.get("agg_reward", "sum"))
 
         self.init_rollout()
 
@@ -60,15 +61,16 @@ class Rollout:
             )
             next_obs, rewards, terminations, truncations, env_info = self.env.chunk_step(actions)
 
-            if self._is_onpolicy:
-                rewards = rewards.sum(-1)
-            else:
-                # Truncated sum: only accumulate rewards up to (and including)
-                # the first termination step; post-termination rewards are invalid.
-                # cum_term = np.cumsum(terminations, axis=-1)
-                # valid_mask = (cum_term <= 1).astype(rewards.dtype)
-                # rewards = (rewards * valid_mask).sum(-1)
+            if self._agg_reward == "sum":
+                cum_term = np.cumsum(terminations, axis=-1)
+                shifted = np.zeros_like(cum_term)
+                shifted[..., 1:] = cum_term[..., :-1]
+                valid_mask = (shifted == 0).astype(rewards.dtype)
+                rewards = (rewards * valid_mask).sum(-1)   
+            elif self._agg_reward == "max":
                 rewards = rewards.max(-1)
+            else:
+                raise ValueError(f"Unknown agg_reward: {self._agg_reward!r}, expected 'sum' or 'max'")
 
             terminations = terminations.any(-1)
             truncations = truncations.any(-1)

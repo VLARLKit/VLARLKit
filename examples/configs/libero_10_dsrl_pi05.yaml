@@ -9,9 +9,10 @@ hydra:
 
 algorithm:
   policy_class: dsrl
+  agg_reward: max
 
   # SAC hyperparameters
-  gamma: 0.999
+  gamma: 0.990045  # 0.999 ** 10 (num_action_chunks)
   tau: 0.005
   backup_entropy: False
   agg_q: redq
