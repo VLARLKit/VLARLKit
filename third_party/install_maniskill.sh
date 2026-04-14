@@ -22,7 +22,7 @@ uv run --no-sync hf download --repo-type dataset RLinf/maniskill_assets --local-
 
 # Download PhysX precompiled library
 wget https://github.com/sapien-sim/physx-precompiled/releases/download/105.1-physx-5.3.1.patch0/linux-so.zip -O /tmp/linux-so.zip
-mkdir -p /home/s/sunyh/.sapien/physx/105.1-physx-5.3.1.patch0
-unzip /tmp/linux-so.zip -d /home/s/sunyh/.sapien/physx/105.1-physx-5.3.1.patch0
+mkdir -p $HOME/.sapien/physx/105.1-physx-5.3.1.patch0
+unzip /tmp/linux-so.zip -d $HOME/.sapien/physx/105.1-physx-5.3.1.patch0
 
 deactivate
