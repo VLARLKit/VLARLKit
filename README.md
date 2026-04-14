@@ -63,9 +63,10 @@ We highly recommend you to use models from RLinf community.
 ```bash
 # download sft openpi model
 cd $SCRATCH
-module load git-lfs
-git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-SFT
-git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-ManiSkill-25Main-SFT
+pip install huggingface_hub[cli]
+
+hf download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir $SCRATCH/RLinf-Pi05-LIBERO-SFT
+hf download RLinf/RLinf-Pi05-ManiSkill-25Main-SFT --local-dir $SCRATCH/RLinf-Pi05-ManiSkill-25Main-SFT
 
 # download tokenizer of openpi model
 mkdir $HOME/.cache/openpi/big_vision
