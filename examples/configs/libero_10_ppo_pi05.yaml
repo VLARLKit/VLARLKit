@@ -10,6 +10,7 @@ hydra:
 algorithm:
   agg_reward: max
   normalize_advantages: True
+  norm_loss_by_traj_len: True
   kl_penalty: kl  # how to estimate kl divergence: kl or kl_penalty
   group_size: 1
   reward_coef: 1.0
