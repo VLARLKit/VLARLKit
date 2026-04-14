@@ -32,6 +32,7 @@ We use [uv](https://docs.astral.sh/uv/) to manage Python dependencies. See the [
 
 ```bash
 git clone https://github.com/VLARLKit/VLARLKit.git
+git checkout compute-canada
 cd VLARLKit
 module load git-lfs
 GIT_LFS_SKIP_SMUDGE=1 uv sync
