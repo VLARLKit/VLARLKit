@@ -89,7 +89,7 @@ class PPOPolicy:
 
     def _setup_lr_scheduler(self) -> None:
         sched_type = self._optim_cfg.get("lr_scheduler", "constant")
-        total_steps = int(self._optim_cfg.get("total_training_steps", 100000))
+        total_steps = int(self._optim_cfg.get("total_training_steps", 1000))
         min_lr_rate = float(self._optim_cfg.get("min_lr_rate", 0.1))
         if sched_type == "cosine":
             def lr_lambda(step: int) -> float:

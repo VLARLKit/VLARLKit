@@ -81,7 +81,7 @@ training:
     weight_decay: 0.01
     clip_grad: 1.0
     critic_warmup_steps: 0
-    lr_scheduler: "constant" # Learning rate scheduler type. Choices: ["constant", "cosine"]. Default: "constant".
+    lr_scheduler: "cosine" # Learning rate scheduler type. Choices: ["constant", "cosine"]. Default: "constant".
   
   fsdp_config:
     strategy: "fsdp"
