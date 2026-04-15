@@ -89,11 +89,13 @@ For the full benchmark-by-benchmark SFT and RL setup, see [SFT Checkpoints and R
 
 ```bash
 # download sft openpi model
-cd $SCRATCH
-module load git-lfs
-git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-SFT
-git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-ManiSkill-25Main-SFT
-git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-RoboTwin-SFT-adjust_bottle
+hf download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
+
+# For ManiSkill SFT model:
+# hf download RLinf/RLinf-Pi05-ManiSkill-25Main-SFT --local-dir <your local path>
+
+# For RoboTwin SFT model:
+# hf download RLinf/RLinf-Pi05-RoboTwin-SFT-adjust_bottle --local-dir <your local path>
 
 # download tokenizer of openpi model
 mkdir $HOME/.cache/openpi/big_vision
