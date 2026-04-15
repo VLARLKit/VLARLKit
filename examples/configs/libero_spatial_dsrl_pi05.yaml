@@ -55,7 +55,7 @@ env:
     use_rel_reward: False
 
 model:
-  model_path: "/scratch/s/sunyh/RLinf-Pi05-LIBERO-SFT"
+  model_path: "$SCRATCH/RLinf-Pi05-LIBERO-SFT"
   num_action_chunks: 5
   action_dim: 7
   use_proprio: True
