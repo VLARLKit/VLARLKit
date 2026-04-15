@@ -75,7 +75,7 @@ git lfs pull
 # git lfs pull
 
 # download tokenizer of openpi model
-mkdir $HOME/.cache/openpi/big_vision
+mkdir -p $HOME/.cache/openpi/big_vision
 wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
   "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
 ```
