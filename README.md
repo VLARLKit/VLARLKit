@@ -98,7 +98,7 @@ hf download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
 # hf download RLinf/RLinf-Pi05-RoboTwin-SFT-adjust_bottle --local-dir <your local path>
 
 # download tokenizer of openpi model
-mkdir $HOME/.cache/openpi/big_vision
+mkdir -p $HOME/.cache/openpi/big_vision
 wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
   "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
 ```
