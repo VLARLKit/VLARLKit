@@ -33,7 +33,6 @@ We use [uv](https://docs.astral.sh/uv/) to manage Python dependencies. See the [
 
 ```bash
 git clone https://github.com/VLARLKit/VLARLKit.git
-git checkout compute-canada
 cd VLARLKit
 git checkout compute-canada
 module load git-lfs
