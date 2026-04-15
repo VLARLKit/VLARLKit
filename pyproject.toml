@@ -22,6 +22,6 @@ evdev = { index = "drac-wheelhouse" }
 
 [[tool.uv.index]]
 name = "drac-wheelhouse"
-url = "/cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic"
+url = "file:///cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic"
 format = "flat"
 explicit = true
