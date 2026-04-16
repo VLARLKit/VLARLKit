@@ -71,7 +71,7 @@ For example:
 model:
   model_path: "<your download path>/RLinf-Pi05-LIBERO-SFT"
   data:
-    assets_dir: "<your download path>/RLinf-Pi05-LIBERO-SFT/physical-intelligence/libero"
+    assets_dir: "<your download path>/RLinf-Pi05-LIBERO-SFT"
 ```
 
 Now, you can lanuch the script to run!

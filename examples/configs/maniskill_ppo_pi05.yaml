@@ -65,9 +65,9 @@ model:
 
   data:
     name: "maniskill"
-    repo_id: "physical-intelligence/maniskill" # does not matter, only assets_dir is used
+    repo_id: "physical-intelligence/maniskill"
     prompt_from_task: True
-    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-ManiSkill-25Main-SFT/physical-intelligence/maniskill"
+    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-ManiSkill-25Main-SFT"
     extra_delta_transform: False
 
   policy_setup: widowx_bridge

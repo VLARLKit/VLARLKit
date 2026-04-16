@@ -71,7 +71,7 @@ model:
     name: "libero"
     repo_id: "physical-intelligence/libero"
     prompt_from_task: True
-    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT/physical-intelligence/libero"
+    assets_dir: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
     extra_delta_transform: False
 
 training:
