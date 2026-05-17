@@ -15,7 +15,7 @@ algorithm:
   branch_rollout_epochs: 4
   branch_sample_size: 128
   branch_max_episode_steps: 20
-  branch_dataset_root: "/home/mila/s/sunyi/scratch/VLA_MBRL/libero_goal_data"
+  branch_dataset_root: "/scratch/s/sunyh/libero_goal_data"
   branch_train_repo_id: "libero_goal_task_3"
   branch_eval_repo_id: "libero_goal_task_3_first_step"
 
@@ -37,9 +37,9 @@ algorithm:
 world_model:
   host: "localhost"
   base_port: 8002
-  load_model_path: "/home/mila/s/sunyi/scratch/Bagel-WM/Bagel-libero-goal"
+  load_model_path: "/scratch/s/sunyh/Bagel-WM/Bagel-libero-goal"
   edit_kwargs:
-    cfg_text_scale: 4.0
+    cfg_text_scale: 6.0
     cfg_img_scale: 2.0
     cfg_type: parallel
     cfg_interval: [0.4, 1.0]
@@ -68,7 +68,7 @@ env:
     use_ordered_reset_state_ids: True
 
 model:
-  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-LIBERO-SFT"
+  model_path: "/scratch/s/sunyh/RLinf-Pi05-LIBERO-SFT"
   num_action_chunks: 10
   action_dim: 7
   use_proprio: True
