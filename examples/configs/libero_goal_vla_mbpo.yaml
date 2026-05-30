@@ -68,7 +68,7 @@ env:
     use_ordered_reset_state_ids: True
 
 model:
-  model_path: "/scratch/s/sunyh/RLinf-Pi05-LIBERO-SFT"
+  model_path: "/scratch/s/sunyh/pi05_libero_one_shot_5000_pytorch"
   num_action_chunks: 10
   action_dim: 7
   use_proprio: True
@@ -118,7 +118,7 @@ runner:
   max_epochs: 50
   eval_interval: 1
   save_interval: 0
-  save_video: False
+  save_video: True
   resume_from: null
   is_debug: False
   logger:
