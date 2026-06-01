@@ -121,9 +121,9 @@ runner:
   max_epochs: 50
   eval_interval: 1
   save_interval: 0
-  save_video: True
+  save_video: False
   resume_from: null
   is_debug: False
   logger:
     project: "VLARLKit"
-    experiment_name: "libero_goal_task_3_vla_mbpo_real_env"
+    experiment_name: "libero_goal_task_3_vla_mbpo_debug"
