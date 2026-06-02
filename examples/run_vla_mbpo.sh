@@ -81,7 +81,7 @@ for ((i=0; i<NPROC; i++)); do
 done
 
 # launch VLA-MBPO training on gpu4-7
-CUDA_VISIBLE_DEVICES=4,5,6,7 uv run --project model_backends/openpi torchrun --nproc_per_node="$NPROC" \
+CUDA_VISIBLE_DEVICES=4,5,6,7 uv run --project model_backends/openpi --no-sync torchrun --nproc_per_node="$NPROC" \
     examples/train_vla_mbpo.py \
     --config-name "$CONFIG_NAME" \
     world_model.base_port="$WM_BASE_PORT" \

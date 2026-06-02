@@ -1,3 +1,6 @@
+[tool.uv]
+python-preference = "system"
+
 [project]
 name = "vlarlkit"
 version = "0.1.0"
@@ -14,4 +17,5 @@ dependencies = [
     "torch>=2.7.0,<2.8.0",
     "wandb>=0.25.0",
     "zmq>=0.0.0",
+    "evdev",
 ]

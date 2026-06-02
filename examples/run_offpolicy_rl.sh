@@ -18,7 +18,7 @@ for ((i=0; i<NPROC; i++)); do
 done
 
 # launch training with torchrun
-uv run --project model_backends/openpi torchrun --nproc_per_node="$NPROC" \
+uv run --project model_backends/openpi --no-sync torchrun --nproc_per_node="$NPROC" \
     examples/train_offpolicy_rl.py \
     --config-name "$CONFIG_NAME"
 

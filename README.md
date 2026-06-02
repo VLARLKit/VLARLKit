@@ -34,7 +34,9 @@ We use [uv](https://docs.astral.sh/uv/) to manage Python dependencies. See the [
 ```bash
 git clone https://github.com/VLARLKit/VLARLKit.git
 cd VLARLKit
-uv sync
+git checkout compute-canada
+module load git-lfs
+GIT_LFS_SKIP_SMUDGE=1 uv sync
 uv pip install -e .
 ```
 
@@ -85,13 +87,16 @@ We highly recommend you to use models from RLinf community.
 For the full benchmark-by-benchmark SFT and RL setup, see [SFT Checkpoints and RL Settings](docs/sft_rl_settings.md).
 
 ```bash
-hf download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
+# download sft openpi model
+cd $SCRATCH
+module load git-lfs
+git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-LIBERO-SFT
+git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-ManiSkill-25Main-SFT
+git-lfs clone https://huggingface.co/RLinf/RLinf-Pi05-RoboTwin-SFT-adjust_bottle
 
-# For ManiSkill SFT model:
-# hf download RLinf/RLinf-Pi05-ManiSkill-25Main-SFT --local-dir <your local path>
-
-# For RoboTwin SFT model:
-# hf download RLinf/RLinf-Pi05-RoboTwin-SFT-adjust_bottle --local-dir <your local path>
+# download tokenizer of openpi model
+wget -O $HOME/.cache/openpi/big_vision/paligemma_tokenizer.model \
+  "https://storage.googleapis.com/big_vision/paligemma_tokenizer.model"
 ```
 
 Then, change the `model_path` in config file (examples/configs/libero_spatial_ppo_pi05.yaml) to your path.
@@ -112,12 +117,12 @@ If you want to have a try with our MBRL method (VLA-MBPO), please follow [BAGEL-
 
 ## 📋 TODO
 
-- Add ManiSkill benchmark support
-- Add RoboTwin benchmark support
-- Add GRPO algorithm support
-- Add off-policy asynchronous training support
-- Add OpenVLA-OFT base model support
-- Add offline and model-based VLA methods support
+- [x] Add ManiSkill benchmark support
+- [x] Add RoboTwin benchmark support
+- [x] Add GRPO algorithm support
+- [x] Add off-policy asynchronous training support
+- [x] Add OpenVLA base model support
+- [x] Add offline and model-based VLA methods support
 
 ## 🙏 Acknowledgements
 

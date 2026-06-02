@@ -56,7 +56,7 @@ env:
     seeds_path: "env_clients/robotwin/seeds/eval_seeds.json"
 
 model:
-  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/RLinf-Pi05-RoboTwin-SFT-adjust_bottle"
+  model_path: "/scratch/s/sunyh/RLinf-Pi05-RoboTwin-SFT-adjust_bottle"
   num_action_chunks: 50
   action_dim: 14
   use_proprio: True
