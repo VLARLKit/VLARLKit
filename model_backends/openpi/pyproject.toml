@@ -1,3 +1,6 @@
+[tool.uv]
+python-preference = "system"
+
 [project]
 name = "vlarlkit-openpi"
 version = "0.1.0"
@@ -5,14 +8,22 @@ description = "OpenPI model backend for VLARLKit"
 readme = "README.md"
 requires-python = "==3.11.*"
 dependencies = [
+    "evdev",
     "openpi",
     "safetensors",
     "vlarlkit",
 ]
 
 [tool.uv.sources]
+evdev = { index = "drac-wheelhouse" }
 openpi = { git = "https://github.com/RLinf/openpi", branch = "main" }
 vlarlkit = { path = "../..", editable = true }
+
+[[tool.uv.index]]
+name = "drac-wheelhouse"
+url = "file:///cvmfs/soft.computecanada.ca/custom/python/wheelhouse/generic"
+format = "flat"
+explicit = true
 
 [build-system]
 requires = ["setuptools>=68"]

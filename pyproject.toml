@@ -17,7 +17,4 @@ dependencies = [
     "torch>=2.7.0,<2.8.0",
     "wandb>=0.25.0",
     "zmq>=0.0.0",
-    "evdev",
-    "moviepy>=1.0.0",
-    "wandb>=0.25.0",
 ]
