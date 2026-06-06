@@ -45,7 +45,7 @@ Install the model backend you need for each experiment.
 
 ### 2. Model Backends (choose one you need)
 
-Each model backend runs from its own uv project with its own dependencies. This
+Each model backend uses its own uv project with its own dependencies. This
 keeps base-model repositories separate from the core package while still
 training the model in the main `torchrun` process.
 
