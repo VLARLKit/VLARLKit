@@ -31,7 +31,7 @@ done
 
 # launch training with torchrun
 cd $SCRATCH/VLARLKit
-uv run --no-sync torchrun --nproc_per_node="$NPROC" \
+uv run --project model_backends/openpi --no-sync torchrun --nproc_per_node="$NPROC" \
     examples/train_vla_mbpo_debug.py \
     --config-name "$CONFIG_NAME" 
 
