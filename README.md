@@ -53,7 +53,7 @@ Install and prepare the backend you need:
 
 ```bash
 # OpenPI
-uv sync --project model_backends/openpi
+GIT_LFS_SKIP_SMUDGE=1 uv sync --project model_backends/openpi
 uv run --project model_backends/openpi \
     bash model_backends/openpi/scripts/apply_transformers_patch.sh
 
