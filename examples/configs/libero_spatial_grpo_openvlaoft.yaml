@@ -67,7 +67,7 @@ env:
     reset_gripper_open: False
 
 model:
-  model_path: "/network/scratch/s/sunyi/rlinf_sft_models/Openvla-oft-SFT-libero-spatial-traj1"
+  model_path: "/scratch/s/sunyh/Openvla-oft-SFT-libero-spatial-traj1"
   unnorm_key: "libero_spatial_no_noops"
   max_prompt_length: 128
   value_type: ${algorithm.reward_type}
