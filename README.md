@@ -87,6 +87,7 @@ We highly recommend you to use models from RLinf community.
 For the full benchmark-by-benchmark SFT and RL setup, see [SFT Checkpoints and RL Settings](docs/sft_rl_settings.md).
 
 ```bash
+# if base env does not have huggingface, install it first: pip install --upgrade huggingface_hub[cli]
 # download sft openpi model
 hf download RLinf/RLinf-Pi05-LIBERO-SFT --local-dir <your local path>
 
