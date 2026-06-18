@@ -1,10 +1,14 @@
-
+<p align="center">
+  <img src="assets/logo.svg" alt="VLARLKit Logo" width="400"/>
+</p>
 
 # VLARLKit: An elegant PyTorch VLA-RL library
 
 An elegant and researcher-friendly RL library for Vision-Language-Action (VLA) models.
 
-
+<p align="center">
+  <img src="assets/framework.svg" alt="VLARLKit Framework" width="700"/>
+</p>
 
 ## ✨ Features
 
@@ -125,7 +129,7 @@ If you want to have a try with our MBRL method (VLA-MBPO), please follow [BAGEL-
 - [x] Add RoboTwin benchmark support
 - [x] Add GRPO algorithm support
 - [x] Add off-policy asynchronous training support
-- [x] Add OpenVLA base model support
+- [x] Add OpenVLA-OFT base model support
 - [x] Add offline and model-based VLA methods support
 
 ## 🙏 Acknowledgements

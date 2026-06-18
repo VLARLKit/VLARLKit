@@ -284,10 +284,15 @@ class OpenVLAOFTForRLActionPrediction(OpenVLAOFTForActionPrediction, BaseModel):
         if env_obs is not None:
             input_ids, attention_mask, pixel_values = self._prepare_env_inputs(env_obs)
 
+        # NumPy cannot store bf16 tensors directly; fp16 keeps this image cache compact.
+        cached_pixel_values = pixel_values
+        if cached_pixel_values.dtype == torch.bfloat16:
+            cached_pixel_values = cached_pixel_values.to(torch.float16)
+
         forward_inputs = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
-            "pixel_values": pixel_values.float(),
+            "pixel_values": cached_pixel_values,
         }
 
         assert torch.all(input_ids[:, 0] == 1)
