@@ -1,0 +1,69 @@
+defaults:
+  - envs/libero_10@env.train
+  - models/pi05_for_qrflow@model
+  - _self_
+
+hydra:
+  run:
+    dir: outputs/${runner.logger.experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+
+algorithm:
+  policy_class: qrflow
+  episodes_per_iteration: 500
+  episodes_per_task: 50
+  gamma: 0.999
+  n_step: 10
+  tau: 0.005
+  critic_updates: 500000
+  critic_global_batch_size: 512
+  critic_hidden_dims: [512, 512, 512]
+  actor_updates: 1000
+  actor_global_batch_size: 512
+  actor_grad_micro_batch_size: 8
+  qrflow_num_paths: 32
+  qrflow_cost_clip: 10.0
+  single_sde_node_seed: 2026091603
+  single_sde_noise_seed: 2026091604
+  beta: 0.3
+
+env:
+  env_client_host: localhost
+  env_client_base_port: 5550
+  train:
+    seed: ${runner.seed}
+    total_num_envs: 20
+    max_episode_steps: 1000
+    ignore_terminations: False
+    use_rel_reward: False
+    use_step_penalty: True
+    reward_coef: 1.0
+    rebuild_on_reset: True
+    init_params:
+      ignore_done: True
+
+training:
+  compile_critic: True
+  optim:
+    lr: 5.0e-6
+    value_lr: 3.0e-4
+    clip_grad: 1.0
+    critic_clip_grad: 10.0
+  fsdp_config:
+    sharding_strategy: no_shard
+    gradient_checkpointing: False
+    forward_prefetch: False
+    backward_prefetch: null
+
+runner:
+  seed: 42
+  iteration: 1
+  collect_data: True
+  actor_checkpoint: null
+  critic_checkpoint: null
+  previous_replay: null
+  replay_path: null
+  resume_from: null
+  log_interval: 100
+  save_interval: 10000
+  logger:
+    experiment_name: libero_10_qrflow_pi05

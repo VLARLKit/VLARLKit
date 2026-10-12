@@ -32,17 +32,21 @@ def _get_registry():
         from vlarlkit_openpi.openpi_for_rl import OpenPi0RLConfig, OpenPi0ForRL
         from vlarlkit_openpi.openpi_for_dsrl import OpenPi0DSRLConfig, OpenPi0ForDSRL
         from vlarlkit_openpi.openpi_for_rlt import OpenPi0RLTConfig, OpenPi0ForRLT
+        from vlarlkit_openpi.openpi_for_qrflow import OpenPi0QRFlowConfig, OpenPi0ForQRFlow
 
         _MODEL_REGISTRY = {
             "OpenPi0ForRL": (OpenPi0RLConfig, OpenPi0ForRL),
             "OpenPi0ForDSRL": (OpenPi0DSRLConfig, OpenPi0ForDSRL),
             "OpenPi0ForRLT": (OpenPi0RLTConfig, OpenPi0ForRLT),
+            "OpenPi0ForQRFlow": (OpenPi0QRFlowConfig, OpenPi0ForQRFlow),
         }
     return _MODEL_REGISTRY
 
 
 def get_model(cfg: DictConfig):
     import glob
+
+    import numpy as np
 
     import openpi.shared.download as download
     import openpi.transforms as transforms
@@ -74,6 +78,8 @@ def get_model(cfg: DictConfig):
     for weight_path in weight_paths:
         safetensors.torch.load_model(model, weight_path, strict=False)
     model.paligemma_with_expert.to_bfloat16_for_selected_params("bfloat16")
+    if model_class_name == "OpenPi0ForQRFlow":
+        model.initialize_qrflow()
 
     # load data stats
     data_config_kwargs = {
@@ -94,6 +100,10 @@ def get_model(cfg: DictConfig):
     if data_config.asset_id is None:
         raise ValueError("Asset id is required to load norm stats.")
     norm_stats = checkpoints.load_norm_stats(checkpoint_dir, data_config.asset_id)
+    if model_class_name == "OpenPi0ForQRFlow":
+        normalize = transforms.Normalize(norm_stats, use_quantiles=data_config.use_quantile_norm)
+        bounds = normalize({"actions": np.stack([-np.ones(7), np.ones(7)])})["actions"]
+        model.set_action_bounds(bounds[0, :6], bounds[1, :6])
 
     # wrappers
     repack_transforms = transforms.Group()

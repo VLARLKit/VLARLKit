@@ -278,7 +278,7 @@ class LiberoEnv(gym.Env):
             reset_state_ids
         )
         for j, env_id in enumerate(env_idx):
-            if self.task_ids[env_id] != task_ids[j]:
+            if self.task_ids[env_id] != task_ids[j] or self.cfg.get("rebuild_on_reset", False):
                 reconfig_env_idx.append(env_id)
             self.task_ids[env_id] = task_ids[j]
             self.trial_ids[env_id] = trial_ids[j]

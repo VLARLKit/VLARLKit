@@ -2,12 +2,14 @@ from vlarlkit.policies.ppo import PPOPolicy
 from vlarlkit.policies.grpo import GRPOPolicy
 from vlarlkit.policies.dsrl import DSRLPolicy
 from vlarlkit.policies.rlt import RLTPolicy
+from vlarlkit.policies.qrflow import QRFlowPolicy
 
 __all__ = [
     "PPOPolicy",
     "GRPOPolicy",
     "DSRLPolicy",
     "RLTPolicy",
+    "QRFlowPolicy",
     "get_onpolicy_policy",
     "get_offpolicy_policy",
 ]
